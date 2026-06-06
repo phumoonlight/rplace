@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { BottomHud } from "@/components/bottom-hud";
 import { HelpModal } from "@/components/help-modal";
 import { OrientationToggle } from "@/components/orientation-toggle";
-import { PixelCanvas, type PaintResponse } from "@/components/pixel-canvas";
+import {
+  PixelCanvas,
+  type PaintResponse,
+  type PixelCanvasHandle,
+} from "@/components/pixel-canvas";
 import { ProfileSidebar } from "@/components/profile-sidebar";
 import { SignInButton } from "@/components/sign-in-button";
 import { UserBadge } from "@/components/user-badge";
@@ -21,6 +25,9 @@ const Home = () => {
   const [selectedColor, setSelectedColor] = useState<number | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const canvasRef = useRef<PixelCanvasHandle>(null);
 
   const canPaint = Boolean(user);
 
@@ -31,14 +38,33 @@ const Home = () => {
     [setProfile],
   );
 
+  const handlePlaceClick = useCallback(() => {
+    if (!paletteOpen) {
+      setPaletteOpen(true);
+      return;
+    }
+    setPaletteOpen(false);
+    setSelectedColor(null);
+    void canvasRef.current?.commit();
+  }, [paletteOpen]);
+
+  const handleEscape = useCallback(() => {
+    setPaletteOpen(false);
+    setSelectedColor(null);
+    canvasRef.current?.discard();
+  }, []);
+
   return (
     <main className="relative h-dvh w-screen overflow-hidden bg-neutral-950 text-neutral-100">
       <PixelCanvas
         canPaint={canPaint}
+        currentQuota={profile?.currentQuota ?? null}
         getIdToken={getIdToken}
         orientation={orientation}
+        ref={canvasRef}
         selectedColor={selectedColor}
         onPaintSuccess={handlePaintSuccess}
+        onPendingCountChange={setPendingCount}
       />
 
       <div className="pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-2">
@@ -78,8 +104,12 @@ const Home = () => {
       <BottomHud
         canPaint={canPaint}
         msUntilNextQuota={msUntilNextQuota}
+        paletteOpen={paletteOpen}
+        pendingCount={pendingCount}
         profile={profile}
         selectedColor={selectedColor}
+        onEscape={handleEscape}
+        onPlaceClick={handlePlaceClick}
         onSelectColor={setSelectedColor}
       />
 

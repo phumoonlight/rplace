@@ -65,9 +65,17 @@ export const applyPaintProgress = (input: {
   level: number;
   maxQuota: number;
   currentQuota: number;
+}): PaintProgress => applyBulkPaintProgress({ ...input, count: 1 });
+
+export const applyBulkPaintProgress = (input: {
+  exp: number;
+  level: number;
+  maxQuota: number;
+  currentQuota: number;
+  count: number;
 }): PaintProgress => {
-  const exp = input.exp + EXP_PER_PAINT;
-  const decremented = input.currentQuota - 1;
+  const exp = input.exp + EXP_PER_PAINT * input.count;
+  const decremented = input.currentQuota - input.count;
   const nextLevel = levelForExp(exp);
   const leveledUp = nextLevel > input.level;
   const maxQuota = leveledUp ? maxQuotaForLevel(nextLevel) : input.maxQuota;

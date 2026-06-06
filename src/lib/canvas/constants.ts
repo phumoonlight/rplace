@@ -41,3 +41,5 @@ export const PALETTE = definePalette([
 ]);
 
 export const PALETTE_SIZE = PALETTE.length;
+
+export const MAX_PIXELS_PER_REQUEST = 100;

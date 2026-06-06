@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Palette } from '@/components/palette'
 import { formatMmSs } from '@/lib/user/use-quota-countdown'
 import { PALETTE } from '@/lib/canvas/constants'
@@ -12,6 +12,10 @@ type BottomHudProps = {
   selectedColor: number | null
   onSelectColor: (index: number | null) => void
   msUntilNextQuota: number | null
+  paletteOpen: boolean
+  pendingCount: number
+  onPlaceClick: () => void
+  onEscape: () => void
 }
 
 export const BottomHud = ({
@@ -20,19 +24,21 @@ export const BottomHud = ({
   selectedColor,
   onSelectColor,
   msUntilNextQuota,
+  paletteOpen,
+  pendingCount,
+  onPlaceClick,
+  onEscape,
 }: BottomHudProps) => {
-  const [paletteOpen, setPaletteOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!paletteOpen) return
-    const onDocPointer = (e: PointerEvent) => {
-      if (!rootRef.current) return
-      if (!rootRef.current.contains(e.target as Node)) setPaletteOpen(false)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onEscape()
     }
-    document.addEventListener('pointerdown', onDocPointer)
-    return () => document.removeEventListener('pointerdown', onDocPointer)
-  }, [paletteOpen])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [paletteOpen, onEscape])
 
   const quotaLabel = profile
     ? `(${profile.currentQuota.toLocaleString()}/${profile.maxQuota})`
@@ -45,6 +51,12 @@ export const BottomHud = ({
 
   const selectedSwatch = selectedColor !== null ? PALETTE[selectedColor] : null
 
+  const label = !paletteOpen
+    ? 'Place'
+    : pendingCount > 0
+      ? `Save (${pendingCount})`
+      : 'Cancel'
+
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center"
@@ -56,10 +68,7 @@ export const BottomHud = ({
             <Palette
               disabled={!canPaint}
               value={selectedColor}
-              onChange={(idx) => {
-                onSelectColor(idx)
-                if (idx !== null) setPaletteOpen(false)
-              }}
+              onChange={onSelectColor}
             />
           </div>
         )}
@@ -67,7 +76,7 @@ export const BottomHud = ({
         <button
           className="flex min-w-50 flex-col items-center justify-center border-2 border-black bg-orange-600 px-6 py-3 text-white shadow-[4px_4px_0_0_#000] transition-colors hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
           type="button"
-          onClick={() => setPaletteOpen((p) => !p)}
+          onClick={onPlaceClick}
           disabled={!canPaint}
           aria-expanded={paletteOpen}
         >
@@ -78,7 +87,7 @@ export const BottomHud = ({
                 style={{ backgroundColor: selectedSwatch.hex }}
               />
             )}
-            Place
+            {label}
           </span>
           <span className="text-xs opacity-90 tabular-nums">
             {quotaLabel}

@@ -1,11 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import {
   CANVAS_DIMENSIONS,
   CHUNK_SIZE,
+  MAX_PIXELS_PER_REQUEST,
   PALETTE,
   type Orientation,
 } from "@/lib/canvas/constants";
@@ -20,17 +29,29 @@ import type { UserProfile } from "@/lib/user/user-profile";
 
 export type PaintResponse = {
   profile: UserProfile;
-  chunkVersion: number;
+  chunkVersions: Record<string, number>;
   leveledUp: boolean;
+  painted: number;
 };
 
 type PixelCanvasProps = {
   orientation: Orientation;
   selectedColor: number | null;
   canPaint: boolean;
+  currentQuota: number | null;
   getIdToken?: () => Promise<string | null>;
   onPaintSuccess?: (response: PaintResponse) => void;
+  onPendingCountChange?: (count: number) => void;
 };
+
+export type PixelCanvasHandle = {
+  commit: () => Promise<void>;
+  discard: () => void;
+};
+
+type PendingEdit = { x: number; y: number; color: number; previousColor: number };
+
+const editKey = (x: number, y: number) => `${x},${y}`;
 
 const MIN_SCALE_FACTOR = 0.5;
 const MAX_SCALE = 32;
@@ -66,13 +87,20 @@ const blitChunk = (
   ctx.putImageData(imageData, cx * CHUNK_SIZE, cy * CHUNK_SIZE);
 };
 
-export const PixelCanvas = ({
+export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   orientation,
   selectedColor,
   canPaint,
+  currentQuota,
   getIdToken,
   onPaintSuccess,
-}: PixelCanvasProps) => {
+  onPendingCountChange,
+}, ref) => {
+  const currentQuotaRef = useRef(currentQuota);
+  currentQuotaRef.current = currentQuota;
+  const [pendingEdits, setPendingEdits] = useState<Map<string, PendingEdit>>(() => new Map());
+  const pendingEditsRef = useRef(pendingEdits);
+  pendingEditsRef.current = pendingEdits;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chunksRef = useRef<Map<string, string>>(new Map());
@@ -85,6 +113,7 @@ export const PixelCanvas = ({
   const [ty, setTy] = useState(0);
   const [scale, setScale] = useState(1);
   const [minScale, setMinScale] = useState(MIN_SCALE_FACTOR);
+  const [hoverTile, setHoverTile] = useState<{ x: number; y: number } | null>(null);
 
   // Mirror transform state in refs so non-React handlers (wheel) can read
   // the latest values without stale closures, and so we never have to nest
@@ -213,48 +242,100 @@ export const PixelCanvas = ({
     return nibbleToIndex(hex, localIndex(lx, ly));
   }, []);
 
-  const submitPaint = useCallback(
-    async (x: number, y: number, colorIndex: number) => {
-      if (!getIdToken) return;
-      const previous = getPreviousColorAt(x, y);
-      paintPixelLocal(x, y, colorIndex);
+  useEffect(() => {
+    onPendingCountChange?.(pendingEdits.size);
+  }, [pendingEdits, onPendingCountChange]);
 
-      try {
-        const token = await getIdToken();
-        if (!token) throw new Error("Not signed in");
-        const res = await fetch("/api/paint", {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${token}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ orientation, x, y, color: colorIndex }),
-        });
-        if (res.status === 429) {
-          paintPixelLocal(x, y, previous);
-          showToast("error", "Out of quota — wait for the next tick.");
-          return;
+  const stageEdit = useCallback(
+    (x: number, y: number, colorIndex: number) => {
+      setPendingEdits((prev) => {
+        const next = new Map(prev);
+        const key = editKey(x, y);
+        const existing = next.get(key);
+        if (!existing) {
+          if (next.size >= MAX_PIXELS_PER_REQUEST) {
+            showToast("error", `Max ${MAX_PIXELS_PER_REQUEST} tiles per save — save or cancel first.`);
+            return prev;
+          }
+          const quota = currentQuotaRef.current ?? 0;
+          if (next.size >= quota) {
+            showToast("error", "Out of quota — wait for the next tick.");
+            return prev;
+          }
         }
-        if (!res.ok) {
-          paintPixelLocal(x, y, previous);
-          const data = (await res.json().catch(() => ({}))) as { error?: string };
-          showToast("error", data.error ?? `Paint failed (${res.status})`);
-          return;
-        }
-        const data = (await res.json()) as PaintResponse;
-        const { cx, cy } = pixelToChunk(x, y);
-        chunkVersionsRef.current.set(chunkKey(cy, cx), data.chunkVersion);
-        onPaintSuccess?.(data);
-        if (data.leveledUp) {
-          showToast("info", `Level up! → Lv ${data.profile.level}`);
-        }
-      } catch (e) {
-        paintPixelLocal(x, y, previous);
-        showToast("error", e instanceof Error ? e.message : "Paint failed");
-      }
+        const previousColor = existing ? existing.previousColor : getPreviousColorAt(x, y);
+        paintPixelLocal(x, y, colorIndex);
+        next.set(key, { x, y, color: colorIndex, previousColor });
+        return next;
+      });
     },
-    [getIdToken, orientation, getPreviousColorAt, paintPixelLocal, onPaintSuccess, showToast],
+    [getPreviousColorAt, paintPixelLocal, showToast],
   );
+
+  const discardPending = useCallback(() => {
+    const edits = pendingEditsRef.current;
+    edits.forEach((edit) => paintPixelLocal(edit.x, edit.y, edit.previousColor));
+    setPendingEdits(new Map());
+  }, [paintPixelLocal]);
+
+  const commitPending = useCallback(async () => {
+    const edits = Array.from(pendingEditsRef.current.values());
+    if (edits.length === 0) return;
+    setPendingEdits(new Map());
+
+    if (!getIdToken) return;
+    const rollback = () => edits.forEach((edit) => paintPixelLocal(edit.x, edit.y, edit.previousColor));
+
+    let token: string | null = null;
+    try {
+      token = await getIdToken();
+    } catch {
+      rollback();
+      showToast("error", "Auth failed");
+      return;
+    }
+    if (!token) {
+      rollback();
+      showToast("error", "Not signed in");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/paint", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          orientation,
+          pixels: edits.map((e) => ({ x: e.x, y: e.y, color: e.color })),
+        }),
+      });
+      if (res.status === 429) {
+        rollback();
+        showToast("error", "Out of quota — wait for the next tick.");
+        return;
+      }
+      if (!res.ok) {
+        rollback();
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        showToast("error", data.error ?? `Paint failed (${res.status})`);
+        return;
+      }
+      const data = (await res.json()) as PaintResponse;
+      for (const [key, v] of Object.entries(data.chunkVersions)) {
+        chunkVersionsRef.current.set(key, v);
+      }
+      onPaintSuccess?.(data);
+      if (data.leveledUp) {
+        showToast("info", `Level up! → Lv ${data.profile.level}`);
+      }
+    } catch (err) {
+      rollback();
+      showToast("error", err instanceof Error ? err.message : "Paint failed");
+    }
+  }, [getIdToken, orientation, paintPixelLocal, onPaintSuccess, showToast]);
 
   const panStateRef = useRef<{
     id: number;
@@ -278,6 +359,19 @@ export const PixelCanvas = ({
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const wrapper = wrapperRef.current;
+    if (wrapper) {
+      const rect = wrapper.getBoundingClientRect();
+      const localX = (e.clientX - rect.left - tx) / scale;
+      const localY = (e.clientY - rect.top - ty) / scale;
+      const px = Math.floor(localX);
+      const py = Math.floor(localY);
+      if (isPixelInBounds(orientation, px, py)) {
+        setHoverTile((prev) => (prev && prev.x === px && prev.y === py ? prev : { x: px, y: py }));
+      } else if (hoverTile !== null) {
+        setHoverTile(null);
+      }
+    }
     const s = panStateRef.current;
     if (!s || s.id !== e.pointerId) return;
     const dx = e.clientX - s.startX;
@@ -285,6 +379,10 @@ export const PixelCanvas = ({
     s.moved = Math.max(s.moved, Math.hypot(dx, dy));
     setTx(s.startTx + dx);
     setTy(s.startTy + dy);
+  };
+
+  const onPointerLeave = () => {
+    setHoverTile(null);
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -295,11 +393,11 @@ export const PixelCanvas = ({
     (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
 
     if (!wasClick) return;
-    if (selectedColor === null) return;
     if (!canPaint) {
       showToast("error", "Sign in to paint.");
       return;
     }
+    if (selectedColor === null) return;
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const rect = wrapper.getBoundingClientRect();
@@ -308,8 +406,17 @@ export const PixelCanvas = ({
     const px = Math.floor(localX);
     const py = Math.floor(localY);
     if (!isPixelInBounds(orientation, px, py)) return;
-    void submitPaint(px, py, selectedColor);
+    stageEdit(px, py, selectedColor);
   };
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      commit: commitPending,
+      discard: discardPending,
+    }),
+    [commitPending, discardPending],
+  );
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -332,18 +439,19 @@ export const PixelCanvas = ({
     return () => wrapper.removeEventListener("wheel", onWheel);
   }, [minScale]);
 
-  const cursor = selectedColor !== null && canPaint ? "crosshair" : "grab";
+  const cursor = selectedColor !== null && canPaint ? "crosshair" : "default";
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-neutral-950">
       <div
-        className="relative h-full w-full touch-none active:cursor-grabbing"
+        className="relative h-full w-full touch-none"
         ref={wrapperRef}
         style={{ cursor }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onPointerLeave={onPointerLeave}
       >
         <canvas
           className="absolute left-0 top-0 origin-top-left select-none"
@@ -355,6 +463,18 @@ export const PixelCanvas = ({
           width={dims.width}
           height={dims.height}
         />
+        {Array.from(pendingEdits.values()).map((edit) => (
+          <TileReticle
+            key={editKey(edit.x, edit.y)}
+            scale={scale}
+            tile={edit}
+            tx={tx}
+            ty={ty}
+          />
+        ))}
+        {hoverTile && !pendingEdits.has(editKey(hoverTile.x, hoverTile.y)) && (
+          <TileReticle dim scale={scale} tile={hoverTile} tx={tx} ty={ty} />
+        )}
       </div>
       {status === "loading" && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-neutral-400">
@@ -379,6 +499,50 @@ export const PixelCanvas = ({
           {toast.text}
         </div>
       )}
+    </div>
+  );
+});
+
+PixelCanvas.displayName = "PixelCanvas";
+
+type TileReticleProps = {
+  tile: { x: number; y: number };
+  tx: number;
+  ty: number;
+  scale: number;
+  dim?: boolean;
+};
+
+const TileReticle = ({ tile, tx, ty, scale, dim = false }: TileReticleProps) => {
+  const color = dim ? "border-neutral-800/30" : "border-neutral-800";
+  const arm = Math.max(6, scale * 0.4);
+  const stroke = Math.max(2, scale * 0.15);
+  const offset = Math.max(2, scale * 0.08);
+  return (
+    <div
+      className="pointer-events-none absolute top-0 left-0"
+      style={{
+        transform: `translate3d(${tx + tile.x * scale}px, ${ty + tile.y * scale}px, 0)`,
+        width: scale,
+        height: scale,
+      }}
+    >
+      <div
+        className={`absolute ${color}`}
+        style={{ top: -offset, left: -offset, width: arm, height: arm, borderLeftWidth: stroke, borderTopWidth: stroke }}
+      />
+      <div
+        className={`absolute ${color}`}
+        style={{ top: -offset, right: -offset, width: arm, height: arm, borderRightWidth: stroke, borderTopWidth: stroke }}
+      />
+      <div
+        className={`absolute ${color}`}
+        style={{ bottom: -offset, left: -offset, width: arm, height: arm, borderLeftWidth: stroke, borderBottomWidth: stroke }}
+      />
+      <div
+        className={`absolute ${color}`}
+        style={{ bottom: -offset, right: -offset, width: arm, height: arm, borderRightWidth: stroke, borderBottomWidth: stroke }}
+      />
     </div>
   );
 };

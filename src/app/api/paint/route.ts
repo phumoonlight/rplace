@@ -4,46 +4,61 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { authedUserFromRequest } from "@/lib/auth/verify-id-token";
 import {
   CANVAS_DIMENSIONS,
+  MAX_PIXELS_PER_REQUEST,
   ORIENTATIONS,
   PALETTE_SIZE,
   type Orientation,
 } from "@/lib/canvas/constants";
 import { chunkKey, pixelToChunk } from "@/lib/canvas/coords";
 import { EMPTY_CHUNK_HEX, localIndex } from "@/lib/canvas/chunks";
-import { applyPaintProgress, restoreQuota } from "@/lib/leveling";
+import { applyBulkPaintProgress, restoreQuota } from "@/lib/leveling";
 import type { UserProfile } from "@/lib/user/user-profile";
+
+type RawPixel = { x?: unknown; y?: unknown; color?: unknown };
 
 type PaintRequestBody = {
   orientation?: unknown;
-  x?: unknown;
-  y?: unknown;
-  color?: unknown;
+  pixels?: unknown;
 };
 
-type PaintInput = {
-  orientation: Orientation;
-  x: number;
-  y: number;
-  color: number;
-};
+type PixelInput = { x: number; y: number; color: number };
 
-const parseBody = (body: PaintRequestBody): PaintInput | { error: string } => {
-  const { orientation, x, y, color } = body;
+type ParsedBody = { orientation: Orientation; pixels: PixelInput[] };
+
+const parseBody = (body: PaintRequestBody): ParsedBody | { error: string } => {
+  const { orientation, pixels } = body;
   if (typeof orientation !== "string" || !ORIENTATIONS.includes(orientation as Orientation)) {
     return { error: "Invalid orientation" };
   }
+  if (!Array.isArray(pixels) || pixels.length === 0) {
+    return { error: "Invalid pixels" };
+  }
+  if (pixels.length > MAX_PIXELS_PER_REQUEST) {
+    return { error: `Too many pixels (max ${MAX_PIXELS_PER_REQUEST})` };
+  }
   const o = orientation as Orientation;
   const { width, height } = CANVAS_DIMENSIONS[o];
-  if (typeof x !== "number" || !Number.isInteger(x) || x < 0 || x >= width) {
-    return { error: "Invalid x" };
+
+  const seen = new Set<string>();
+  const parsed: PixelInput[] = [];
+  for (const raw of pixels as RawPixel[]) {
+    if (raw == null || typeof raw !== "object") return { error: "Invalid pixel" };
+    const { x, y, color } = raw;
+    if (typeof x !== "number" || !Number.isInteger(x) || x < 0 || x >= width) {
+      return { error: "Invalid x" };
+    }
+    if (typeof y !== "number" || !Number.isInteger(y) || y < 0 || y >= height) {
+      return { error: "Invalid y" };
+    }
+    if (typeof color !== "number" || !Number.isInteger(color) || color < 0 || color >= PALETTE_SIZE) {
+      return { error: "Invalid color" };
+    }
+    const key = `${x},${y}`;
+    if (seen.has(key)) return { error: "Duplicate pixel" };
+    seen.add(key);
+    parsed.push({ x, y, color });
   }
-  if (typeof y !== "number" || !Number.isInteger(y) || y < 0 || y >= height) {
-    return { error: "Invalid y" };
-  }
-  if (typeof color !== "number" || !Number.isInteger(color) || color < 0 || color >= PALETTE_SIZE) {
-    return { error: "Invalid color" };
-  }
-  return { orientation: o, x, y, color };
+  return { orientation: o, pixels: parsed };
 };
 
 const replaceNibble = (hex: string, index: number, color: number): string => {
@@ -65,8 +80,9 @@ class OutOfQuotaError extends Error {
 
 type PaintResult = {
   profile: UserProfile;
-  chunkVersion: number;
+  chunkVersions: Record<string, number>;
   leveledUp: boolean;
+  painted: number;
 };
 
 const POST = async (request: Request) => {
@@ -87,21 +103,41 @@ const POST = async (request: Request) => {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { orientation, x, y, color } = parsed;
-  const { cx, cy, lx, ly } = pixelToChunk(x, y);
-  const key = chunkKey(cy, cx);
+  const { orientation, pixels } = parsed;
+
+  // Group pixels by chunk so we touch each chunk doc only once.
+  const byChunk = new Map<string, Array<PixelInput & { lx: number; ly: number }>>();
+  for (const p of pixels) {
+    const { cx, cy, lx, ly } = pixelToChunk(p.x, p.y);
+    const key = chunkKey(cy, cx);
+    const bucket = byChunk.get(key);
+    const entry = { ...p, lx, ly };
+    if (bucket) bucket.push(entry);
+    else byChunk.set(key, [entry]);
+  }
 
   const db = getAdminDb();
   const userRef = db.collection("users").doc(authed.uid);
-  const chunkRef = db
-    .collection("canvas")
-    .doc(orientation)
-    .collection("chunks")
-    .doc(key);
+  const chunkRefs = new Map(
+    Array.from(byChunk.keys()).map((key) => [
+      key,
+      db.collection("canvas").doc(orientation).collection("chunks").doc(key),
+    ]),
+  );
 
   try {
     const result = await db.runTransaction<PaintResult>(async (tx) => {
-      const [userSnap, chunkSnap] = await Promise.all([tx.get(userRef), tx.get(chunkRef)]);
+      const userSnapPromise = tx.get(userRef);
+      const chunkSnapPromises = Array.from(chunkRefs.entries()).map(async ([key, ref]) => {
+        const snap = await tx.get(ref);
+        return [key, snap] as const;
+      });
+      const [userSnap, ...chunkSnapEntries] = await Promise.all([
+        userSnapPromise,
+        ...chunkSnapPromises,
+      ]);
+      const chunkSnaps = new Map(chunkSnapEntries);
+
       if (!userSnap.exists) {
         throw new Error("User profile missing — call /api/me first");
       }
@@ -127,27 +163,22 @@ const POST = async (request: Request) => {
         nowMs,
       });
 
-      if (restored.currentQuota <= 0) {
+      if (restored.currentQuota < pixels.length) {
         throw new OutOfQuotaError();
       }
 
-      const progress = applyPaintProgress({
+      const progress = applyBulkPaintProgress({
         exp: userData.exp,
         level: userData.level,
         maxQuota: userData.maxQuota,
         currentQuota: restored.currentQuota,
+        count: pixels.length,
       });
-
-      const oldHex = (chunkSnap.exists ? (chunkSnap.data() as { hex?: unknown }).hex : null);
-      const baseHex = typeof oldHex === "string" && oldHex.length === EMPTY_CHUNK_HEX.length
-        ? oldHex
-        : EMPTY_CHUNK_HEX;
-      const newHex = replaceNibble(baseHex, localIndex(lx, ly), color);
 
       const lastQuotaRestoreAtTs = Timestamp.fromMillis(restored.lastQuotaRestoreAtMs);
 
       tx.update(userRef, {
-        pixelsPainted: FieldValue.increment(1),
+        pixelsPainted: FieldValue.increment(pixels.length),
         exp: progress.exp,
         level: progress.level,
         maxQuota: progress.maxQuota,
@@ -155,18 +186,32 @@ const POST = async (request: Request) => {
         lastQuotaRestoreAt: lastQuotaRestoreAtTs,
       });
 
-      if (chunkSnap.exists) {
-        tx.update(chunkRef, {
-          hex: newHex,
-          v: FieldValue.increment(1),
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else {
-        tx.set(chunkRef, {
-          hex: newHex,
-          v: 1,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      const chunkVersions: Record<string, number> = {};
+      for (const [key, edits] of byChunk.entries()) {
+        const ref = chunkRefs.get(key)!;
+        const snap = chunkSnaps.get(key)!;
+        const oldHex = snap.exists ? (snap.data() as { hex?: unknown }).hex : null;
+        let hex = typeof oldHex === "string" && oldHex.length === EMPTY_CHUNK_HEX.length
+          ? oldHex
+          : EMPTY_CHUNK_HEX;
+        for (const edit of edits) {
+          hex = replaceNibble(hex, localIndex(edit.lx, edit.ly), edit.color);
+        }
+        if (snap.exists) {
+          tx.update(ref, {
+            hex,
+            v: FieldValue.increment(1),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          chunkVersions[key] = ((snap.data() as { v?: number }).v ?? 0) + 1;
+        } else {
+          tx.set(ref, {
+            hex,
+            v: 1,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          chunkVersions[key] = 1;
+        }
       }
 
       const profile: UserProfile = {
@@ -174,7 +219,7 @@ const POST = async (request: Request) => {
         displayName: userData.displayName,
         photoURL: userData.photoURL ?? null,
         createdAt: tsToMs(userData.createdAt),
-        pixelsPainted: userData.pixelsPainted + 1,
+        pixelsPainted: userData.pixelsPainted + pixels.length,
         exp: progress.exp,
         level: progress.level,
         maxQuota: progress.maxQuota,
@@ -182,11 +227,7 @@ const POST = async (request: Request) => {
         lastQuotaRestoreAt: restored.lastQuotaRestoreAtMs,
       };
 
-      const chunkVersion = chunkSnap.exists
-        ? ((chunkSnap.data() as { v?: number }).v ?? 0) + 1
-        : 1;
-
-      return { profile, chunkVersion, leveledUp: progress.leveledUp };
+      return { profile, chunkVersions, leveledUp: progress.leveledUp, painted: pixels.length };
     });
 
     return NextResponse.json(result);
