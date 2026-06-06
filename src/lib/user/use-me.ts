@@ -9,6 +9,7 @@ export type UseMeState = {
   loading: boolean;
   error: string | null;
   reload: () => Promise<void>;
+  setProfile: (next: UserProfile | null) => void;
 };
 
 export const useMe = (): UseMeState => {
@@ -47,5 +48,5 @@ export const useMe = (): UseMeState => {
     void fetchProfile();
   }, [fetchProfile]);
 
-  return { profile, loading, error, reload: fetchProfile };
+  return { profile, loading, error, reload: fetchProfile, setProfile };
 };

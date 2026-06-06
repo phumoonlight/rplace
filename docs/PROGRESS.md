@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 3 — Static canvas. **Code complete on Firestore. Blocked on user (Firebase project setup).**
-- **Last touched**: 2026-06-06 (RTDB → Firestore migration: `<PixelCanvas />` reads chunk docs via `getDocs`, RTDB getters/env vars removed from client + admin SDKs — typecheck, lint, prod build all clean; First Load JS dropped 241 → 218 kB)
-- **Next action**: User still owes the Phase 1 Firebase console setup + `.env.local`. Once Firestore is reachable the canvas will render real chunks; today it gracefully falls back to an all-white canvas with an error banner if the Firestore read fails. Then proceed to Phase 4 (palette UI, `POST /api/paint` with the two-doc Firestore txn over `users/{uid}` + `canvas/{orientation}/chunks/{key}`, optimistic paint).
+- **Current phase**: Phase 4 — Paint flow. **Code complete. Still blocked on user (Firebase project setup) for end-to-end verification.**
+- **Last touched**: 2026-06-06 (Phase 4: `<Palette />`, `POST /api/paint` with single two-doc Firestore txn, optimistic client paint + rollback + 429 toast, shared `src/lib/leveling.ts`; typecheck, lint, prod build all clean. First Load JS on `/` is 220 kB.)
+- **Next action**: Once `.env.local` lands, manual end-to-end sign-in → paint → quota decrement → exp/level update. Then Phase 5 (`onSnapshot` on chunks collection for live updates from other clients). The paint route already increments `v` on the chunk doc, so the Phase 5 listener has its dedupe key.
 
 ---
 
@@ -82,11 +82,11 @@
 
 ### Phase 4 — Paint flow
 
-- [ ] `<Palette />` UI with 16 colors, keyboard shortcuts
-- [ ] `POST /api/paint` validates input
-- [ ] Single Firestore txn updates `users/{uid}` (quota/exp/level) AND `canvas/{orientation}/chunks/{key}` (new hex + `v` increment) atomically
-- [ ] Client optimistic paint + rollback on error
-- [ ] 429 (out of quota) handled with toast
+- [x] `<Palette />` UI with 16 colors, keyboard shortcuts (1-9, 0, q-y; Esc to deselect)
+- [x] `POST /api/paint` validates input (orientation / x / y / color)
+- [x] Single Firestore txn updates `users/{uid}` (quota/exp/level) AND `canvas/{orientation}/chunks/{key}` (new hex + `v` increment) atomically
+- [x] Client optimistic paint + rollback on error
+- [x] 429 (out of quota) handled with toast
 
 ### Phase 5 — Live updates
 
@@ -95,10 +95,10 @@
 
 ### Phase 6 — Leveling + quota restore
 
-- [ ] `src/lib/leveling.ts` shared module + unit tests
-- [ ] Lazy quota restore inside paint txn
+- [x] `src/lib/leveling.ts` shared module (landed early as part of Phase 4 paint txn)
+- [x] Lazy quota restore inside paint txn (`restoreQuota` in the txn before the quota check)
 - [ ] Live countdown UI to next quota tick
-- [ ] Level-up toast
+- [x] Level-up toast (`leveledUp` flag from `/api/paint` triggers an in-canvas toast)
 
 ### Phase 7 — Polish
 
@@ -118,6 +118,18 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Phase 4 complete (paint flow)
+
+- [src/lib/leveling.ts](../src/lib/leveling.ts) — new shared pure module: `expForLevel(n) = 50 n (n+1)`, `levelForExp(exp)` (iterative — bounded since levels grow with each painted pixel), `maxQuotaForLevel(level) = min(10 + 2·(level−1), 100)`, `restoreQuota({ currentQuota, maxQuota, lastQuotaRestoreAtMs, nowMs })` advances by whole ticks (`QUOTA_RESTORE_INTERVAL_MS = 60_000`) and pushes the anchor forward by the consumed ticks (so partial seconds aren't lost), `applyPaintProgress({ exp, level, maxQuota, currentQuota })` decrements quota / adds exp / recomputes level + bumps & tops up `currentQuota` on level-up. Consolidated `INITIAL_LEVEL`/`INITIAL_MAX_QUOTA` here; [user-profile.ts](../src/lib/user/user-profile.ts) re-exports them.
+- [src/components/palette.tsx](../src/components/palette.tsx) — 16-swatch toolbar driven by `PALETTE`; selected swatch gets a white border + scale; clicking the selected swatch toggles it off; `Esc` clears. Keyboard shortcuts: `1-9 0 q w e r t y` for indices 0–15 (skips when focus is in an input or modifier is held). `disabled` prop greys it out before sign-in.
+- [src/app/api/paint/route.ts](../src/app/api/paint/route.ts) — `POST` route: verifies ID token, validates body against orientation dims + palette range, runs a single Firestore transaction over `users/{uid}` AND `canvas/{orientation}/chunks/{cy_cx}`. Reads both docs (Promise.all), calls `restoreQuota`, throws `OutOfQuotaError` → `429` if `currentQuota <= 0`, otherwise replaces the target nibble in `hex`, updates the user doc (`pixelsPainted++`, `exp/level/maxQuota/currentQuota` via `applyPaintProgress`, anchor `lastQuotaRestoreAt`), and writes the chunk doc (`tx.set` if the chunk doesn't exist yet, otherwise `tx.update` with `v: FieldValue.increment(1)` + `updatedAt: serverTimestamp()`). Returns `{ profile, chunkVersion, leveledUp }` so the client doesn't need to re-fetch `/api/me`.
+- [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) — added click-to-paint. Pan vs click distinguished by pointer-move distance (`< 4 px` = click). On click, screen coords are inverted through `(tx, ty, scale)` to pixel coords, bounds-checked, and painted optimistically via `ctx.fillRect(x, y, 1, 1)` + an in-memory `chunksRef` Map (also used to read the previous color for rollback). Then `POST /api/paint`: on `429` rolls back + shows "Out of quota" toast; on other errors rolls back with the error text; on success calls `onPaintSuccess(response)` and shows a "Level up!" toast if `leveledUp`. Auto-dismissing toast (2.5 s) sits at the top of the canvas. Cursor flips to `crosshair` when a color is selected and the user can paint.
+- Lifted profile state from [user-badge.tsx](../src/components/user-badge.tsx) (now purely presentational, takes `profile / loading / error` props) up to [src/app/page.tsx](../src/app/page.tsx), which calls `useMe()` once and threads `setProfile` through `onPaintSuccess` so the badge updates instantly without an extra `/api/me` round-trip. Exposed `setProfile` from the [use-me](../src/lib/user/use-me.ts) hook for that purpose.
+- **Design notes**: chose to lift `useMe` over a context provider — only the home page + `/me` page need it and `/me` keeps its own instance. Toast lives inside `<PixelCanvas />` rather than at page level because every emitter (out-of-quota, level-up, network fail) is internal to the paint flow; cleaner cohesion. `applyPaintProgress` returns `currentQuota = maxQuota` on level-up so the level-up top-up rule from PLAN.md §4 happens in one place.
+- `npx tsc --noEmit` → clean. `npm run lint` → clean. `npm run build` → clean (`/` 5.41 kB / 220 kB First Load JS).
+- **Blocker**: same Phase 1 console + `.env.local`. With no admin credentials, `/api/paint` will throw "Firebase Admin SDK credentials missing"; with no client config, the canvas read fails and the UI renders the empty-state banner.
+- **Next**: Phase 5 — `onSnapshot` subscription on `canvas/{orientation}/chunks` so other users' pixels appear without refresh. The `v` field is already incremented per paint so a basic last-version dedupe is trivial.
 
 ### 2026-06-06 — Migrated Phase 3 from RTDB to Firestore
 

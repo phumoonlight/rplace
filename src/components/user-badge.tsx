@@ -1,11 +1,16 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/auth-context";
-import { useMe } from "@/lib/user/use-me";
+import type { UserProfile } from "@/lib/user/user-profile";
 
-export const UserBadge = () => {
+type UserBadgeProps = {
+  profile: UserProfile | null;
+  loading?: boolean;
+  error?: string | null;
+};
+
+export const UserBadge = ({ profile, loading = false, error = null }: UserBadgeProps) => {
   const { user, signOut } = useAuth();
-  const { profile, loading, error } = useMe();
 
   if (!user) return null;
 

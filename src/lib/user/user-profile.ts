@@ -1,3 +1,5 @@
+export { INITIAL_LEVEL, INITIAL_MAX_QUOTA } from "@/lib/leveling";
+
 export type UserProfile = {
   uid: string;
   displayName: string;
@@ -10,6 +12,3 @@ export type UserProfile = {
   currentQuota: number;
   lastQuotaRestoreAt: number;
 };
-
-export const INITIAL_LEVEL = 1;
-export const INITIAL_MAX_QUOTA = 10;
