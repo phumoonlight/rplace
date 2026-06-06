@@ -4,15 +4,15 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
   type ReactNode,
 } from "react";
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "rplace.theme";
-const DEFAULT_THEME: Theme = "light";
+export const THEME_COOKIE = "rplace.theme";
+export const THEME_DEFAULT: Theme = "light";
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 type ThemeContextValue = {
   theme: Theme;
@@ -22,38 +22,21 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const readStoredTheme = (): Theme => {
-  if (typeof window === "undefined") return DEFAULT_THEME;
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  return stored === "dark" || stored === "light" ? stored : DEFAULT_THEME;
-};
-
 const applyThemeClass = (theme: Theme) => {
-  if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.classList.toggle("dark", theme === "dark");
   root.style.colorScheme = theme;
 };
 
-type ThemeProviderProps = { children: ReactNode };
+type ThemeProviderProps = { initialTheme: Theme; children: ReactNode };
 
-export const ThemeProvider = ({ children }: ThemeProviderProps) => {
-  const [theme, setThemeState] = useState<Theme>(DEFAULT_THEME);
-
-  useEffect(() => {
-    const initial = readStoredTheme();
-    setThemeState(initial);
-    applyThemeClass(initial);
-  }, []);
+export const ThemeProvider = ({ initialTheme, children }: ThemeProviderProps) => {
+  const [theme, setThemeState] = useState<Theme>(initialTheme);
 
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
     applyThemeClass(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // ignore quota / private-mode failures
-    }
+    document.cookie = `${THEME_COOKIE}=${next};path=/;max-age=${COOKIE_MAX_AGE};SameSite=Lax`;
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -72,5 +55,3 @@ export const useTheme = (): ThemeContextValue => {
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
   return ctx;
 };
-
-export const THEME_INIT_SCRIPT = `(()=>{try{var t=localStorage.getItem('${STORAGE_KEY}');if(t!=='dark'&&t!=='light')t='${DEFAULT_THEME}';var r=document.documentElement;if(t==='dark')r.classList.add('dark');r.style.colorScheme=t;}catch(e){}})();`;
