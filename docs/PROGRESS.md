@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 3 — Static canvas. **Code complete on RTDB; needs migration to Firestore-only (plan change 2026-06-06).**
-- **Last touched**: 2026-06-06 (canvas constants/chunk/coords math, `<PixelCanvas />` with pan+zoom, orientation toggle wired into landing page — typecheck, lint, prod build all clean)
-- **Next action**: Plan changed — RTDB is dropped, Firestore is the only data store ([PLAN.md](./PLAN.md) §2, §3, §5, §6 updated). Phase 3 code currently reads chunks from RTDB; refactor [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) to read chunk docs from Firestore (`getDocs` on `canvas/{orientation}/chunks`) and drop the `NEXT_PUBLIC_FIREBASE_DATABASE_URL` / `FIREBASE_DATABASE_URL` env vars + the RTDB getter in [src/lib/firebase/client.ts](../src/lib/firebase/client.ts). Then proceed to Phase 4 (palette UI, `POST /api/paint` with the two-doc Firestore txn, optimistic paint).
+- **Current phase**: Phase 3 — Static canvas. **Code complete on Firestore. Blocked on user (Firebase project setup).**
+- **Last touched**: 2026-06-06 (RTDB → Firestore migration: `<PixelCanvas />` reads chunk docs via `getDocs`, RTDB getters/env vars removed from client + admin SDKs — typecheck, lint, prod build all clean; First Load JS dropped 241 → 218 kB)
+- **Next action**: User still owes the Phase 1 Firebase console setup + `.env.local`. Once Firestore is reachable the canvas will render real chunks; today it gracefully falls back to an all-white canvas with an error banner if the Firestore read fails. Then proceed to Phase 4 (palette UI, `POST /api/paint` with the two-doc Firestore txn over `users/{uid}` + `canvas/{orientation}/chunks/{key}`, optimistic paint).
 
 ---
 
@@ -69,9 +69,9 @@
 - [x] `<Canvas />` reads all chunks once and renders landscape (currently RTDB — needs migration ↓)
 - [x] Pan + zoom (mouse + touch)
 - [x] Portrait orientation toggle works
-- [ ] **Migrate chunk read from RTDB to Firestore** (`getDocs` on `canvas/{orientation}/chunks`)
-- [ ] **Remove RTDB getter from `src/lib/firebase/client.ts`** and the `NEXT_PUBLIC_FIREBASE_DATABASE_URL` env var
-- [ ] **Remove server `FIREBASE_DATABASE_URL`** from `.env.example` and admin SDK init
+- [x] Migrated chunk read from RTDB to Firestore (`getDocs` on `canvas/{orientation}/chunks`)
+- [x] Removed RTDB getter from `src/lib/firebase/client.ts` and the `NEXT_PUBLIC_FIREBASE_DATABASE_URL` env var
+- [x] Removed server `FIREBASE_DATABASE_URL` from `.env.example` and admin SDK init
 
 ### Phase 4 — Paint flow
 - [ ] `<Palette />` UI with 16 colors, keyboard shortcuts
@@ -106,6 +106,14 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Migrated Phase 3 from RTDB to Firestore
+- [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx): swapped `get(ref(rtdb, "canvas/{o}/chunks"))` for `getDocs(collection(firestore, "canvas", orientation, "chunks"))`. Each chunk is now a Firestore doc whose `hex` field holds the 2500-char string (PLAN.md §3 shape: `{ hex, v, updatedAt }`). The `Record<string, string>` map fed to `renderChunks` is built from `snap.forEach((doc) => chunks[doc.id] = doc.data().hex)`, so the downstream `drawChunkOntoImageData` path is unchanged. Error banner copy updated from "RTDB not configured" → "Firestore not configured".
+- [src/lib/firebase/client.ts](../src/lib/firebase/client.ts): dropped `getDatabase`/`Database` imports, `getFirebaseRtdb()`, and `databaseURL` from the client config.
+- [src/lib/firebase/admin.ts](../src/lib/firebase/admin.ts): dropped `getDatabase`/`Database` imports, `getAdminRtdb()`, and `databaseURL` from the admin app init.
+- The `firebase` and `firebase-admin` packages stay installed (Firestore submodules); we just stopped importing their `database` submodules. No `package.json` change needed.
+- `npx tsc --noEmit` → clean. `npm run lint` → clean. `npm run build` → clean. **First Load JS on `/` dropped from 241 kB → 218 kB** (~23 kB win from no longer pulling `firebase/database` into the client bundle).
+- **Next**: Phase 4 — `<Palette />`, `POST /api/paint` with the single two-doc Firestore transaction.
 
 ### 2026-06-06 — Plan change: dropped RTDB, Firestore-only
 - User decided to consolidate onto a single backend. Trade-off accepted: slightly higher per-paint cost (2 Firestore writes) and slightly slower live updates (`onSnapshot` ~hundreds of ms vs RTDB tens), in exchange for one set of rules, one set of env vars, and an atomic two-doc paint transaction (no cross-DB rollback problem).

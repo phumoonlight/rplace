@@ -1,7 +1,6 @@
 import "server-only";
 import { cert, getApp, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
-import { getDatabase, type Database } from "firebase-admin/database";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 const ADMIN_APP_NAME = "rplace-admin";
@@ -32,7 +31,6 @@ export const getAdminApp = (): App => {
   return initializeApp(
     {
       credential: cert(credentials),
-      databaseURL: process.env.FIREBASE_DATABASE_URL,
     },
     ADMIN_APP_NAME,
   );
@@ -41,5 +39,3 @@ export const getAdminApp = (): App => {
 export const getAdminAuth = (): Auth => getAuth(getAdminApp());
 
 export const getAdminDb = (): Firestore => getFirestore(getAdminApp());
-
-export const getAdminRtdb = (): Database => getDatabase(getAdminApp());
