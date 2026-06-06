@@ -14,6 +14,33 @@
 
 ---
 
+## Manual tasks (outside coding)
+
+> Things only the user can do — console clicks, deploys, commits, and
+> end-to-end verifications that need real credentials. Coding tasks live
+> in the phase checklist below; this section tracks the human work that
+> unblocks them.
+
+### Phase 0
+- [x] Initial commit
+
+### Phase 1 — Firebase console setup
+- [ ] Firebase project created in console (record project ID in the values table below)
+- [ ] Google sign-in provider enabled in console
+- [ ] Realtime Database created in console (region noted)
+- [ ] Firestore created in console
+- [ ] `.env.local` populated from `.env.example`
+- [ ] End-to-end sign-in verified (popup → ID token retrievable) — unblocked once the four console items + `.env.local` are done
+
+### Phase 8 — Deploy & rules
+- [ ] Firestore rules deployed via Firebase console / CLI
+- [ ] RTDB rules deployed via Firebase console / CLI
+- [ ] Vercel deploy live
+- [ ] Production auth domain added to Firebase authorized domains
+- [ ] Lighthouse > 90 on mobile (run against the deployed URL)
+
+---
+
 ## Phase checklist
 
 ### Phase 0 — Scaffolding
@@ -22,20 +49,14 @@
 - [x] Add `.env.example`
 - [x] Update `.gitignore` for `*.serviceaccount.json` (existing template already covered `.env*`)
 - [x] Landing page renders "r/place clone" placeholder (verified: `GET / → 200`)
-- [ ] Initial commit *(deferred — waiting for user to review before committing)*
 
 ### Phase 1 — Firebase wiring
-- [ ] Firebase project created in console (manual; record project ID below)
-- [ ] Google sign-in provider enabled in console
-- [ ] Realtime Database created in console (region noted)
-- [ ] Firestore created in console
 - [x] `src/lib/firebase/client.ts` initializes browser app (Auth + Firestore + RTDB lazy getters)
 - [x] `src/lib/firebase/admin.ts` initializes Admin SDK from env (named app, throws clear error if env missing)
 - [x] `src/lib/auth/verify-id-token.ts` server helper (Bearer extraction + token verify)
 - [x] `src/lib/auth/auth-context.tsx` client `<AuthProvider>` + `useAuth()` hook
 - [x] `<SignInButton />` and `<UserBadge />` components
 - [x] Root layout wraps children in `<AuthProvider>`; landing page shows sign-in or badge
-- [ ] Sign-in button works end-to-end (popup → ID token retrievable) — **needs real Firebase project**
 
 ### Phase 2 — User profile
 - [ ] `verifyIdToken` helper
@@ -78,12 +99,9 @@
 - [ ] Error toasts
 
 ### Phase 8 — Hardening & deploy
-- [ ] Firestore rules deployed
-- [ ] RTDB rules deployed
+- [ ] Firestore rules authored (`firestore.rules`)
+- [ ] RTDB rules authored (`database.rules.json`)
 - [ ] Per-uid rate limit on `/api/paint`
-- [ ] Lighthouse > 90 on mobile
-- [ ] Vercel deploy live
-- [ ] Production auth domain verified
 
 ---
 
@@ -126,19 +144,18 @@
 
 ---
 
-## Manual setup checklist (Firebase console)
+## Manual setup values
 
-Once these are done, fill in the values to the right.
+> Checkboxes for these live in "Manual tasks (outside coding)" above —
+> this table just records the values once the console work is done.
 
 | Item | Value |
 |---|---|
 | Firebase project ID | _tbd_ |
 | RTDB region | _tbd_ |
 | Firestore region | _tbd_ |
-| Google sign-in enabled | [ ] |
 | Authorized domains include localhost & prod | [ ] |
 | Service account JSON downloaded (admin) | [ ] |
-| `.env.local` populated | [ ] |
 
 ---
 
