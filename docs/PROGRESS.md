@@ -22,16 +22,19 @@
 > unblocks them.
 
 ### Phase 0
+
 - [x] Initial commit
 
 ### Phase 1 — Firebase console setup
-- [ ] Firebase project created in console (record project ID in the values table below)
-- [ ] Google sign-in provider enabled in console
-- [ ] Firestore created in console (region noted)
-- [ ] `.env.local` populated from `.env.example`
-- [ ] End-to-end sign-in verified (popup → ID token retrievable) — unblocked once the three console items + `.env.local` are done
+
+- [x] Firebase project created in console (record project ID in the values table below)
+- [x] Google sign-in provider enabled in console
+- [x] Firestore created in console (region noted)
+- [x] `.env.local` populated from `.env.example`
+- [x] End-to-end sign-in verified (popup → ID token retrievable) — unblocked once the three console items + `.env.local` are done
 
 ### Phase 8 — Deploy & rules
+
 - [ ] Firestore rules deployed via Firebase console / CLI (covers `users/{uid}` and `canvas/{orientation}/chunks/{chunkId}`)
 - [ ] Vercel deploy live
 - [ ] Production auth domain added to Firebase authorized domains
@@ -42,6 +45,7 @@
 ## Phase checklist
 
 ### Phase 0 — Scaffolding
+
 - [x] Scaffold Next.js 15 (TS, Tailwind v4, App Router, `src/` dir, ESLint flat config)
 - [x] Install `firebase` and `firebase-admin`
 - [x] Add `.env.example`
@@ -49,6 +53,7 @@
 - [x] Landing page renders "r/place clone" placeholder (verified: `GET / → 200`)
 
 ### Phase 1 — Firebase wiring
+
 - [x] `src/lib/firebase/client.ts` initializes browser app (Auth + Firestore + RTDB lazy getters)
 - [x] `src/lib/firebase/admin.ts` initializes Admin SDK from env (named app, throws clear error if env missing)
 - [x] `src/lib/auth/verify-id-token.ts` server helper (Bearer extraction + token verify)
@@ -57,12 +62,14 @@
 - [x] Root layout wraps children in `<AuthProvider>`; landing page shows sign-in or badge
 
 ### Phase 2 — User profile
+
 - [x] `verifyIdToken` helper (landed in Phase 1)
 - [x] `GET /api/me` returns/creates user doc
 - [x] `<UserBadge />` renders header stats (level / quota / exp from `/api/me`)
 - [x] `/me` page renders stats
 
 ### Phase 3 — Static canvas
+
 - [x] `src/lib/canvas/constants.ts` (dimensions, palette, chunk size)
 - [x] `src/lib/canvas/chunks.ts` (hex string ↔ Uint8Array)
 - [x] `src/lib/canvas/coords.ts`
@@ -74,6 +81,7 @@
 - [x] Removed server `FIREBASE_DATABASE_URL` from `.env.example` and admin SDK init
 
 ### Phase 4 — Paint flow
+
 - [ ] `<Palette />` UI with 16 colors, keyboard shortcuts
 - [ ] `POST /api/paint` validates input
 - [ ] Single Firestore txn updates `users/{uid}` (quota/exp/level) AND `canvas/{orientation}/chunks/{key}` (new hex + `v` increment) atomically
@@ -81,16 +89,19 @@
 - [ ] 429 (out of quota) handled with toast
 
 ### Phase 5 — Live updates
+
 - [ ] Firestore `onSnapshot` subscription on `canvas/{orientation}/chunks` collection
 - [ ] Other users' pixels appear without refresh (chunk-doc snapshot drives the offscreen blit)
 
 ### Phase 6 — Leveling + quota restore
+
 - [ ] `src/lib/leveling.ts` shared module + unit tests
 - [ ] Lazy quota restore inside paint txn
 - [ ] Live countdown UI to next quota tick
 - [ ] Level-up toast
 
 ### Phase 7 — Polish
+
 - [ ] Mobile pinch zoom + drag
 - [ ] At-zero-quota visual state
 - [ ] Palette keyboard shortcuts
@@ -98,6 +109,7 @@
 - [ ] Error toasts
 
 ### Phase 8 — Hardening & deploy
+
 - [ ] Firestore rules authored (`firestore.rules`) — covers users + canvas chunks
 - [ ] Per-uid rate limit on `/api/paint`
 
@@ -108,6 +120,7 @@
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
 
 ### 2026-06-06 — Migrated Phase 3 from RTDB to Firestore
+
 - [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx): swapped `get(ref(rtdb, "canvas/{o}/chunks"))` for `getDocs(collection(firestore, "canvas", orientation, "chunks"))`. Each chunk is now a Firestore doc whose `hex` field holds the 2500-char string (PLAN.md §3 shape: `{ hex, v, updatedAt }`). The `Record<string, string>` map fed to `renderChunks` is built from `snap.forEach((doc) => chunks[doc.id] = doc.data().hex)`, so the downstream `drawChunkOntoImageData` path is unchanged. Error banner copy updated from "RTDB not configured" → "Firestore not configured".
 - [src/lib/firebase/client.ts](../src/lib/firebase/client.ts): dropped `getDatabase`/`Database` imports, `getFirebaseRtdb()`, and `databaseURL` from the client config.
 - [src/lib/firebase/admin.ts](../src/lib/firebase/admin.ts): dropped `getDatabase`/`Database` imports, `getAdminRtdb()`, and `databaseURL` from the admin app init.
@@ -116,12 +129,12 @@
 - **Next**: Phase 4 — `<Palette />`, `POST /api/paint` with the single two-doc Firestore transaction.
 
 ### 2026-06-06 — Plan change: dropped RTDB, Firestore-only
+
 - User decided to consolidate onto a single backend. Trade-off accepted: slightly higher per-paint cost (2 Firestore writes) and slightly slower live updates (`onSnapshot` ~hundreds of ms vs RTDB tens), in exchange for one set of rules, one set of env vars, and an atomic two-doc paint transaction (no cross-DB rollback problem).
 - [PLAN.md](./PLAN.md) rewritten: §2 tech-stack row + "Why Firestore-only" rationale; §3 chunks become Firestore docs `{ hex, v, updatedAt }`, `recent` event log removed (chunk-doc snapshots are the live channel), added "viewport optimization (post-v1)" note; §5 paint flow is now a single Firestore txn over `users/{uid}` + chunk doc with read-then-write ordering, added cost note; §6 Firestore rules now also cover `canvas/{orientation}/chunks/{chunkId}`, RTDB rules block deleted; §8 project layout drops `database.rules.json`; §9 drops both `NEXT_PUBLIC_FIREBASE_DATABASE_URL` and server `FIREBASE_DATABASE_URL`; §10 Phase 3/5/8 reworded.
 - Phase 3 checklist gained three follow-up boxes: migrate `<PixelCanvas />` from RTDB to Firestore `getDocs`, remove RTDB getter from [src/lib/firebase/client.ts](../src/lib/firebase/client.ts) + the public env var, drop the server `FIREBASE_DATABASE_URL`.
 - [CLAUDE.md](../CLAUDE.md) and [.env.example](../.env.example) also need to be brought into line — flagging here for the next code session rather than touching them with the doc edits.
 - **Next**: do the RTDB → Firestore migration (Phase 3 follow-up boxes), then Phase 4 paint flow using the new two-doc txn.
-
 
 - Canvas math modules — pure, shared client/server:
   - [src/lib/canvas/constants.ts](../src/lib/canvas/constants.ts): `Orientation` union, `ORIENTATIONS`, `CANVAS_DIMENSIONS` (landscape 800×400, portrait 400×800), `CHUNK_SIZE = 50`, and the 16-color `PALETTE` with precomputed RGB tuples (single source of truth for both `imageData` writes and the upcoming `<Palette />`).
@@ -135,6 +148,7 @@
 - **Next**: Phase 4 — `<Palette />`, `POST /api/paint` (Firestore txn for quota/exp/level + RTDB chunk + recent event), optimistic client paint with rollback.
 
 ### 2026-06-06 — Phase 2 code complete (still blocked on Firebase project)
+
 - New shared types: [src/lib/user/user-profile.ts](../src/lib/user/user-profile.ts) (`UserProfile` + initial-user constants — client-safe, no `server-only`).
 - Server doc helpers: [src/lib/user/user-doc.ts](../src/lib/user/user-doc.ts) (`newUserDoc` returns a Firestore write payload using `FieldValue.serverTimestamp()`; `serializeUserDoc` converts `Timestamp` → `number` ms for the wire).
 - Route: [src/app/api/me/route.ts](../src/app/api/me/route.ts) verifies the Bearer ID token, gets/creates `users/{uid}`, returns the serialized profile. 401 on missing/invalid token.
@@ -146,6 +160,7 @@
 - **Next**: Phase 3 — canvas constants + chunk math + static `<Canvas />` render.
 
 ### 2026-06-06 — Phase 1 code complete (blocked on Firebase project)
+
 - Wrote [src/lib/firebase/client.ts](../src/lib/firebase/client.ts) (lazy getters for `Auth`, `Firestore`, `Database`) and [src/lib/firebase/admin.ts](../src/lib/firebase/admin.ts) (Admin SDK singleton under a named app, throws if env vars missing; handles `\n`-escaped private keys).
 - Wrote [src/lib/auth/verify-id-token.ts](../src/lib/auth/verify-id-token.ts) (`verifyIdToken`, `extractBearer`, `authedUserFromRequest`) and [src/lib/auth/auth-context.tsx](../src/lib/auth/auth-context.tsx) (`<AuthProvider>` + `useAuth()` exposing `signInWithGoogle`, `signOut`, `getIdToken`).
 - Wrote [src/components/sign-in-button.tsx](../src/components/sign-in-button.tsx) and [src/components/user-badge.tsx](../src/components/user-badge.tsx).
@@ -156,12 +171,14 @@
 - **Next**: Phase 2 — `GET /api/me` route handler that lazy-creates `users/{uid}` in Firestore and returns stats.
 
 ### 2026-06-06 — Phase 0 complete
+
 - Scaffolded Next.js 15.5.19 manually (didn't use `create-next-app` because the repo already had LICENSE/README/docs and the auto-mode classifier blocked moving them aside). Hand-wrote `package.json`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `src/app/{layout,page}.tsx`, `src/app/globals.css`, `.env.example`.
 - Installed deps (514 packages, including `firebase` 11 and `firebase-admin` 13).
 - Smoke test: `npm run dev` → `Ready in 5.2s`, `GET / → 200` in ~4s compile.
 - **Next**: Phase 1 — create Firebase project in console, populate `.env.local`, build `src/lib/firebase/{client,admin}.ts`, wire Google sign-in.
 
 ### 2026-06-06 — Plan authored
+
 - Wrote [PLAN.md](./PLAN.md) and this progress doc.
 - No code yet. Repo contains only LICENSE and README.
 - **Next**: Phase 0 scaffolding.
@@ -186,13 +203,13 @@
 > Checkboxes for these live in "Manual tasks (outside coding)" above —
 > this table just records the values once the console work is done.
 
-| Item | Value |
-|---|---|
-| Firebase project ID | _tbd_ |
-| RTDB region | _tbd_ |
-| Firestore region | _tbd_ |
-| Authorized domains include localhost & prod | [ ] |
-| Service account JSON downloaded (admin) | [ ] |
+| Item                                        | Value |
+| ------------------------------------------- | ----- |
+| Firebase project ID                         | _tbd_ |
+| RTDB region                                 | _tbd_ |
+| Firestore region                            | _tbd_ |
+| Authorized domains include localhost & prod | [ ]   |
+| Service account JSON downloaded (admin)     | [ ]   |
 
 ---
 
@@ -202,4 +219,3 @@
 > Leave blank until something comes up.
 
 - _(none yet)_
-
