@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Palette } from '@/components/palette'
 import { formatMmSs } from '@/lib/user/use-quota-countdown'
 import { PALETTE } from '@/lib/canvas/constants'
@@ -30,6 +30,23 @@ export const BottomHud = ({
   onEscape,
 }: BottomHudProps) => {
   const rootRef = useRef<HTMLDivElement>(null)
+  const [renderPalette, setRenderPalette] = useState(paletteOpen)
+  const [closing, setClosing] = useState(false)
+
+  useEffect(() => {
+    if (paletteOpen) {
+      setRenderPalette(true)
+      setClosing(false)
+      return
+    }
+    if (!renderPalette) return
+    setClosing(true)
+    const id = window.setTimeout(() => {
+      setRenderPalette(false)
+      setClosing(false)
+    }, 180)
+    return () => window.clearTimeout(id)
+  }, [paletteOpen, renderPalette])
 
   useEffect(() => {
     if (!paletteOpen) return
@@ -51,20 +68,22 @@ export const BottomHud = ({
 
   const selectedSwatch = selectedColor !== null ? PALETTE[selectedColor] : null
 
-  if (paletteOpen) {
+  if (renderPalette) {
     return (
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20"
         ref={rootRef}
       >
-        <div className="pointer-events-auto border-t-2 border-black bg-neutral-900 px-3 py-3 shadow-[0_-4px_0_0_#000]">
+        <div
+          className={`${closing ? 'animate-palette-panel-out' : 'animate-palette-panel'} pointer-events-auto border-t-2 border-black bg-neutral-900 px-3 py-3 shadow-[0_-4px_0_0_#000]`}
+        >
           <Palette
             disabled={!canPaint}
             size="lg"
             value={selectedColor}
             onChange={onSelectColor}
           />
-          <div className="mt-3 flex items-center justify-center gap-3">
+          <div className="animate-palette-actions mt-3 flex items-center justify-center gap-3">
             <button
               className="flex h-11 w-20 items-center justify-center border-2 border-black bg-white text-2xl leading-none text-black shadow-[3px_3px_0_0_#000] hover:bg-neutral-100"
               type="button"

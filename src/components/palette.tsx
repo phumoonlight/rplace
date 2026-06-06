@@ -50,6 +50,7 @@ export const Palette = ({ value, onChange, disabled = false, size = "sm" }: Pale
       {PALETTE.map((color, index) => {
         const selected = value === index;
         const shortcut = SHORTCUT_KEYS[index];
+        const animate = size === "lg";
         return (
           <button
             className={[
@@ -57,8 +58,12 @@ export const Palette = ({ value, onChange, disabled = false, size = "sm" }: Pale
               "border-2 transition-transform",
               selected ? "scale-110 border-white" : "border-black hover:border-neutral-400",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+              animate ? "animate-palette-swatch" : "",
             ].join(" ")}
-            style={{ backgroundColor: color.hex }}
+            style={{
+              backgroundColor: color.hex,
+              ...(animate ? { animationDelay: `${index * 25}ms` } : null),
+            }}
             type="button"
             key={color.name}
             onClick={() => onChange(selected ? null : index)}
