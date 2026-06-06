@@ -36,7 +36,7 @@ export const Palette = ({ value, onChange, disabled = false }: PaletteProps) => 
 
   return (
     <div
-      className="flex flex-wrap items-center justify-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-950/80 p-2"
+      className="flex flex-wrap items-center justify-center gap-1.5 bg-neutral-950 p-2"
       role="toolbar"
       aria-label="Color palette"
     >
@@ -46,8 +46,8 @@ export const Palette = ({ value, onChange, disabled = false }: PaletteProps) => 
         return (
           <button
             className={[
-              "h-7 w-7 rounded border-2 transition-transform",
-              selected ? "scale-110 border-white" : "border-neutral-700 hover:border-neutral-400",
+              "h-7 w-7 border-2 transition-transform",
+              selected ? "scale-110 border-white" : "border-black hover:border-neutral-400",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
             ].join(" ")}
             style={{ backgroundColor: color.hex }}

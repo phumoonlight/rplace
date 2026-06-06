@@ -23,7 +23,7 @@ export const SignInButton = () => {
   return (
     <div className="flex flex-col items-center gap-2">
       <button
-        className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-neutral-200 disabled:opacity-50"
+        className="border-2 border-black bg-white px-4 py-2 text-sm font-medium text-black shadow-[3px_3px_0_0_#000] hover:bg-neutral-200 disabled:opacity-50"
         type="button"
         onClick={onClick}
         disabled={busy}

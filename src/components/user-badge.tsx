@@ -9,6 +9,7 @@ type UserBadgeProps = {
   loading?: boolean;
   error?: string | null;
   msUntilNextQuota?: number | null;
+  onClick?: () => void;
 };
 
 export const UserBadge = ({
@@ -16,8 +17,9 @@ export const UserBadge = ({
   loading = false,
   error = null,
   msUntilNextQuota = null,
+  onClick,
 }: UserBadgeProps) => {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
 
   if (!user) return null;
 
@@ -25,11 +27,16 @@ export const UserBadge = ({
   const photoURL = profile?.photoURL ?? user.photoURL ?? null;
 
   return (
-    <div className="flex items-center gap-3 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm">
+    <button
+      className="flex items-center gap-3 border-2 border-black bg-neutral-900 px-3 py-2 text-left text-sm shadow-[3px_3px_0_0_#000] transition-colors hover:bg-neutral-800"
+      type="button"
+      onClick={onClick}
+      aria-label="Open profile"
+    >
       {photoURL && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          className="h-8 w-8 rounded-full"
+          className="h-8 w-8 border-2 border-black"
           src={photoURL}
           alt={displayName}
         />
@@ -53,13 +60,6 @@ export const UserBadge = ({
           </span>
         )}
       </div>
-      <button
-        className="ml-2 rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
-        type="button"
-        onClick={() => signOut()}
-      >
-        Sign out
-      </button>
-    </div>
+    </button>
   );
 };

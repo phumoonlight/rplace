@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import Link from "next/link";
+import { BottomHud } from "@/components/bottom-hud";
+import { HelpModal } from "@/components/help-modal";
 import { OrientationToggle } from "@/components/orientation-toggle";
-import { Palette } from "@/components/palette";
 import { PixelCanvas, type PaintResponse } from "@/components/pixel-canvas";
+import { ProfileSidebar } from "@/components/profile-sidebar";
 import { SignInButton } from "@/components/sign-in-button";
 import { UserBadge } from "@/components/user-badge";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -14,10 +15,12 @@ import { useQuotaCountdown } from "@/lib/user/use-quota-countdown";
 
 const Home = () => {
   const { user, loading: authLoading, getIdToken } = useAuth();
-  const { profile, loading: profileLoading, error: profileError, setProfile } = useMe();
+  const { profile, loading: profileLoading, error: profileError, reload, setProfile } = useMe();
   const msUntilNextQuota = useQuotaCountdown({ profile, setProfile });
   const [orientation, setOrientation] = useState<Orientation>("landscape");
   const [selectedColor, setSelectedColor] = useState<number | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const canPaint = Boolean(user);
 
@@ -29,54 +32,67 @@ const Home = () => {
   );
 
   return (
-    <main className="flex h-screen flex-col gap-3 p-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold tracking-tight">r/place clone</h1>
+    <main className="relative h-dvh w-screen overflow-hidden bg-neutral-950 text-neutral-100">
+      <PixelCanvas
+        canPaint={canPaint}
+        getIdToken={getIdToken}
+        orientation={orientation}
+        selectedColor={selectedColor}
+        onPaintSuccess={handlePaintSuccess}
+      />
+
+      <div className="pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-2">
+        <button
+          className="pointer-events-auto flex h-10 w-10 items-center justify-center border-2 border-black bg-neutral-900 text-lg font-bold text-neutral-200 shadow-[3px_3px_0_0_#000] hover:bg-neutral-800"
+          type="button"
+          onClick={() => setHelpOpen(true)}
+          aria-label="How to play"
+        >
+          ?
+        </button>
+        <div className="pointer-events-auto">
           <OrientationToggle value={orientation} onChange={setOrientation} />
         </div>
-        <div className="flex items-center gap-3">
+      </div>
+
+      <div className="pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2">
+        <div className="pointer-events-auto">
           {authLoading ? (
-            <span className="text-sm text-neutral-500">Loading…</span>
+            <span className="border-2 border-black bg-neutral-900 px-3 py-2 text-sm text-neutral-500 shadow-[3px_3px_0_0_#000]">
+              Loading…
+            </span>
           ) : user ? (
-            <>
-              <UserBadge
-                error={profileError}
-                loading={profileLoading}
-                msUntilNextQuota={msUntilNextQuota}
-                profile={profile}
-              />
-              <Link
-                className="text-sm text-neutral-400 underline-offset-4 hover:text-neutral-200 hover:underline"
-                href="/me"
-              >
-                Profile →
-              </Link>
-            </>
+            <UserBadge
+              error={profileError}
+              loading={profileLoading}
+              msUntilNextQuota={msUntilNextQuota}
+              profile={profile}
+              onClick={() => setProfileOpen(true)}
+            />
           ) : (
             <SignInButton />
           )}
         </div>
-      </header>
-      <div className="min-h-0 flex-1">
-        <PixelCanvas
-          canPaint={canPaint}
-          getIdToken={getIdToken}
-          orientation={orientation}
-          selectedColor={selectedColor}
-          onPaintSuccess={handlePaintSuccess}
-        />
       </div>
-      <div className="flex flex-col items-center gap-2">
-        <Palette disabled={!canPaint} value={selectedColor} onChange={setSelectedColor} />
-        <p className="text-center text-xs text-neutral-500">
-          {canPaint
-            ? selectedColor === null
-              ? "Pick a color, then click the canvas to paint. Drag to pan, scroll to zoom."
-              : "Click the canvas to paint. Press Esc to deselect."
-            : "Sign in to paint. Drag to pan, scroll to zoom."}
-        </p>
-      </div>
+
+      <BottomHud
+        canPaint={canPaint}
+        msUntilNextQuota={msUntilNextQuota}
+        profile={profile}
+        selectedColor={selectedColor}
+        onSelectColor={setSelectedColor}
+      />
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <ProfileSidebar
+        error={profileError}
+        loading={profileLoading}
+        msUntilNextQuota={msUntilNextQuota}
+        open={profileOpen}
+        profile={profile}
+        reload={reload}
+        onClose={() => setProfileOpen(false)}
+      />
     </main>
   );
 };

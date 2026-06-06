@@ -14,14 +14,14 @@ const LABELS: Record<Orientation, string> = {
 
 export const OrientationToggle = ({ value, onChange }: OrientationToggleProps) => {
   return (
-    <div className="inline-flex rounded-md border border-neutral-800 bg-neutral-900 p-0.5 text-xs">
+    <div className="inline-flex border-2 border-black bg-neutral-900 p-0.5 text-xs shadow-[3px_3px_0_0_#000]">
       {ORIENTATIONS.map((o) => {
         const active = o === value;
         return (
           <button
             key={o}
             className={
-              "rounded px-3 py-1 transition-colors " +
+              "px-3 py-1 transition-colors " +
               (active
                 ? "bg-neutral-700 text-neutral-50"
                 : "text-neutral-400 hover:text-neutral-200")
