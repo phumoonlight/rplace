@@ -42,11 +42,14 @@ type PixelCanvasProps = {
   getIdToken?: () => Promise<string | null>;
   onPaintSuccess?: (response: PaintResponse) => void;
   onPendingCountChange?: (count: number) => void;
+  onTileInspect?: (tile: { x: number; y: number }) => void;
+  highlightedTile?: { x: number; y: number } | null;
 };
 
 export type PixelCanvasHandle = {
   commit: () => Promise<void>;
   discard: () => void;
+  getTileSnapshot: (x: number, y: number, radius?: number) => string | null;
 };
 
 type PendingEdit = { x: number; y: number; color: number; previousColor: number };
@@ -95,6 +98,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   getIdToken,
   onPaintSuccess,
   onPendingCountChange,
+  onTileInspect,
+  highlightedTile,
 }, ref) => {
   const currentQuotaRef = useRef(currentQuota);
   currentQuotaRef.current = currentQuota;
@@ -248,23 +253,28 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
 
   const stageEdit = useCallback(
     (x: number, y: number, colorIndex: number) => {
+      // Side effects (paintPixelLocal mutates chunksRef + the canvas) MUST run
+      // outside the setPendingEdits updater — StrictMode invokes updaters twice,
+      // and on the second run getPreviousColorAt would read the already-painted
+      // color and store it as the "previous" color, breaking discard rollback.
+      const key = editKey(x, y);
+      const current = pendingEditsRef.current;
+      const existing = current.get(key);
+      if (!existing) {
+        if (current.size >= MAX_PIXELS_PER_REQUEST) {
+          showToast("error", `Max ${MAX_PIXELS_PER_REQUEST} tiles per save — save or cancel first.`);
+          return;
+        }
+        const quota = currentQuotaRef.current ?? 0;
+        if (current.size >= quota) {
+          showToast("error", "Out of quota — wait for the next tick.");
+          return;
+        }
+      }
+      const previousColor = existing ? existing.previousColor : getPreviousColorAt(x, y);
+      paintPixelLocal(x, y, colorIndex);
       setPendingEdits((prev) => {
         const next = new Map(prev);
-        const key = editKey(x, y);
-        const existing = next.get(key);
-        if (!existing) {
-          if (next.size >= MAX_PIXELS_PER_REQUEST) {
-            showToast("error", `Max ${MAX_PIXELS_PER_REQUEST} tiles per save — save or cancel first.`);
-            return prev;
-          }
-          const quota = currentQuotaRef.current ?? 0;
-          if (next.size >= quota) {
-            showToast("error", "Out of quota — wait for the next tick.");
-            return prev;
-          }
-        }
-        const previousColor = existing ? existing.previousColor : getPreviousColorAt(x, y);
-        paintPixelLocal(x, y, colorIndex);
         next.set(key, { x, y, color: colorIndex, previousColor });
         return next;
       });
@@ -393,11 +403,6 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
 
     if (!wasClick) return;
-    if (!canPaint) {
-      showToast("error", "Sign in to paint.");
-      return;
-    }
-    if (selectedColor === null) return;
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const rect = wrapper.getBoundingClientRect();
@@ -406,16 +411,65 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     const px = Math.floor(localX);
     const py = Math.floor(localY);
     if (!isPixelInBounds(orientation, px, py)) return;
+    if (selectedColor === null) {
+      onTileInspect?.({ x: px, y: py });
+      return;
+    }
+    if (!canPaint) {
+      showToast("error", "Sign in to paint.");
+      return;
+    }
     stageEdit(px, py, selectedColor);
   };
+
+  const getTileSnapshot = useCallback(
+    (x: number, y: number, radius = 16) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return null;
+      const size = radius * 2 + 1;
+      const outScale = 6;
+      const out = document.createElement("canvas");
+      out.width = size * outScale;
+      out.height = size * outScale;
+      const octx = out.getContext("2d");
+      if (!octx) return null;
+      octx.imageSmoothingEnabled = false;
+      octx.fillStyle = PALETTE[0].hex;
+      octx.fillRect(0, 0, out.width, out.height);
+      const sx = x - radius;
+      const sy = y - radius;
+      const sx0 = Math.max(0, sx);
+      const sy0 = Math.max(0, sy);
+      const sx1 = Math.min(dims.width, sx + size);
+      const sy1 = Math.min(dims.height, sy + size);
+      const sw = sx1 - sx0;
+      const sh = sy1 - sy0;
+      if (sw > 0 && sh > 0) {
+        const dx = (sx0 - sx) * outScale;
+        const dy = (sy0 - sy) * outScale;
+        octx.drawImage(canvas, sx0, sy0, sw, sh, dx, dy, sw * outScale, sh * outScale);
+      }
+      const cx = radius * outScale;
+      const cy = radius * outScale;
+      octx.lineWidth = 2;
+      octx.strokeStyle = "#000";
+      octx.strokeRect(cx - 1, cy - 1, outScale + 2, outScale + 2);
+      octx.lineWidth = 1;
+      octx.strokeStyle = "#fff";
+      octx.strokeRect(cx, cy, outScale, outScale);
+      return out.toDataURL("image/png");
+    },
+    [dims.width, dims.height],
+  );
 
   useImperativeHandle(
     ref,
     () => ({
       commit: commitPending,
       discard: discardPending,
+      getTileSnapshot,
     }),
-    [commitPending, discardPending],
+    [commitPending, discardPending, getTileSnapshot],
   );
 
   useEffect(() => {
@@ -472,7 +526,12 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
             ty={ty}
           />
         ))}
-        {hoverTile && !pendingEdits.has(editKey(hoverTile.x, hoverTile.y)) && (
+        {highlightedTile && !pendingEdits.has(editKey(highlightedTile.x, highlightedTile.y)) && (
+          <TileReticle scale={scale} tile={highlightedTile} tx={tx} ty={ty} />
+        )}
+        {hoverTile
+          && !pendingEdits.has(editKey(hoverTile.x, hoverTile.y))
+          && !(highlightedTile && highlightedTile.x === hoverTile.x && highlightedTile.y === hoverTile.y) && (
           <TileReticle dim scale={scale} tile={hoverTile} tx={tx} ty={ty} />
         )}
       </div>

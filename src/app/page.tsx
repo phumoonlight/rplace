@@ -11,6 +11,8 @@ import {
 } from "@/components/pixel-canvas";
 import { ProfileSidebar } from "@/components/profile-sidebar";
 import { SignInButton } from "@/components/sign-in-button";
+import { TileInfoCard } from "@/components/tile-info-card";
+import { TileInspectBar } from "@/components/tile-inspect-bar";
 import { UserBadge } from "@/components/user-badge";
 import { useAuth } from "@/lib/auth/auth-context";
 import type { Orientation } from "@/lib/canvas/constants";
@@ -27,6 +29,8 @@ const Home = () => {
   const [profileOpen, setProfileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [inspectedTile, setInspectedTile] = useState<{ x: number; y: number; snapshot: string | null } | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const canvasRef = useRef<PixelCanvasHandle>(null);
 
   const canPaint = Boolean(user);
@@ -40,6 +44,8 @@ const Home = () => {
 
   const handlePlaceClick = useCallback(() => {
     if (!paletteOpen) {
+      setInspectedTile(null);
+      setShareOpen(false);
       setPaletteOpen(true);
       return;
     }
@@ -54,17 +60,34 @@ const Home = () => {
     canvasRef.current?.discard();
   }, []);
 
+  const handleTileInspect = useCallback(
+    (tile: { x: number; y: number }) => {
+      if (paletteOpen) return;
+      const snapshot = canvasRef.current?.getTileSnapshot(tile.x, tile.y) ?? null;
+      setInspectedTile({ x: tile.x, y: tile.y, snapshot });
+      setShareOpen(false);
+    },
+    [paletteOpen],
+  );
+
+  const handleCloseInspect = useCallback(() => {
+    setInspectedTile(null);
+    setShareOpen(false);
+  }, []);
+
   return (
     <main className="relative h-dvh w-screen overflow-hidden bg-neutral-950 text-neutral-100">
       <PixelCanvas
         canPaint={canPaint}
         currentQuota={profile?.currentQuota ?? null}
         getIdToken={getIdToken}
+        highlightedTile={inspectedTile ? { x: inspectedTile.x, y: inspectedTile.y } : null}
         orientation={orientation}
         ref={canvasRef}
         selectedColor={selectedColor}
         onPaintSuccess={handlePaintSuccess}
         onPendingCountChange={setPendingCount}
+        onTileInspect={handleTileInspect}
       />
 
       <div className="pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-2">
@@ -100,6 +123,28 @@ const Home = () => {
           )}
         </div>
       </div>
+
+      {inspectedTile && !paletteOpen && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-28 z-20 flex justify-center px-3">
+          <TileInspectBar
+            canPaint={canPaint}
+            orientation={orientation}
+            tile={{ x: inspectedTile.x, y: inspectedTile.y }}
+            onClose={handleCloseInspect}
+            onPlace={handlePlaceClick}
+            onShare={() => setShareOpen(true)}
+          />
+        </div>
+      )}
+
+      {inspectedTile && shareOpen && (
+        <TileInfoCard
+          orientation={orientation}
+          snapshot={inspectedTile.snapshot}
+          tile={{ x: inspectedTile.x, y: inspectedTile.y }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       <BottomHud
         canPaint={canPaint}

@@ -7,11 +7,17 @@ export type PaletteProps = {
   value: number | null;
   onChange: (index: number | null) => void;
   disabled?: boolean;
+  size?: "sm" | "lg";
 };
 
 const SHORTCUT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "q", "w", "e", "r", "t", "y"] as const;
 
-export const Palette = ({ value, onChange, disabled = false }: PaletteProps) => {
+const SIZE_CLASSES = {
+  sm: { container: "gap-1.5 p-2 bg-neutral-950", swatch: "h-7 w-7" },
+  lg: { container: "gap-2 p-0", swatch: "h-10 w-10 sm:h-12 sm:w-12" },
+} as const;
+
+export const Palette = ({ value, onChange, disabled = false, size = "sm" }: PaletteProps) => {
   useEffect(() => {
     if (disabled) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -34,9 +40,10 @@ export const Palette = ({ value, onChange, disabled = false }: PaletteProps) => 
     return () => window.removeEventListener("keydown", handleKey);
   }, [disabled, value, onChange]);
 
+  const cls = SIZE_CLASSES[size];
   return (
     <div
-      className="flex flex-wrap items-center justify-center gap-1.5 bg-neutral-950 p-2"
+      className={`flex flex-wrap items-center justify-center ${cls.container}`}
       role="toolbar"
       aria-label="Color palette"
     >
@@ -46,7 +53,8 @@ export const Palette = ({ value, onChange, disabled = false }: PaletteProps) => 
         return (
           <button
             className={[
-              "h-7 w-7 border-2 transition-transform",
+              cls.swatch,
+              "border-2 transition-transform",
               selected ? "scale-110 border-white" : "border-black hover:border-neutral-400",
               disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
             ].join(" ")}
