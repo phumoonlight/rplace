@@ -9,7 +9,7 @@
 ## Status snapshot
 
 - **Current phase**: Phase 6 — Leveling + quota restore. **Code complete (countdown UI shipped). Still blocked on user (Firebase project setup) for end-to-end verification.**
-- **Last touched**: 2026-06-06 (Phase 6 wrap-up: `useQuotaCountdown` hook mirrors `restoreQuota` client-side, ticks `setProfile` whenever a whole minute elapses, exposes `msUntilNextQuota`. `<UserBadge />` shows `+1 in 0:42` line; `/me` shows `Next quota in 0:42`. Typecheck, lint, prod build all clean. First Load JS on `/` 5.87 kB / 220 kB.)
+- **Last touched**: 2026-06-06 (Exp storage flipped from cumulative-lifetime to per-level — `exp` resets on level-up, `expCostForLevel(n) = 5·(n+1)` replaces `expForLevel`/`levelForExp`. Exp stat card dropped from the sidebar in favor of the existing exp bar.)
 - **Next action**: Once `.env.local` lands, manual end-to-end: paint until quota = 0, watch countdown tick down to 0:00, confirm quota restores +1 without page reload. Then Phase 7 polish (mobile pinch zoom, at-zero-quota visual state, a11y pass, error toasts).
 
 ---
@@ -118,6 +118,15 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Exp stored per-level (not cumulative), Exp stat card removed
+
+- [src/lib/leveling.ts](../src/lib/leveling.ts) — changed the `exp` field semantics from "cumulative lifetime exp" to "exp within the current level, resets on level-up". Dropped `expForLevel(n)` (cumulative threshold) and `levelForExp(exp)` (level-from-cumulative) and replaced with `expCostForLevel(n) = 5·(n+1)` — the cost to go from level n → n+1. `applyBulkPaintProgress` now adds the painted count to `exp`, then loops `while (exp >= cost) { exp -= cost; level += 1 }` so it handles single-paint, bulk-paint, and the legacy cumulative-exp migration in one pass. `currentQuota` still tops up to `maxQuota` on level-up.
+- [src/components/profile-sidebar.tsx](../src/components/profile-sidebar.tsx) — `<ExpBar>` math collapses to `intoLevel = exp`, `needed = expCostForLevel(level)` — no more subtracting prev/next thresholds. Removed the now-redundant `<Stat label="Exp">` from the 2×2 grid since the bar already shows current/needed (per user feedback: "user can see at exp bar instead").
+- [src/components/user-badge.tsx](../src/components/user-badge.tsx) — unchanged; the inline `· {profile.exp} exp` text now reads as per-level exp (e.g. "26 exp"), consistent with the bar.
+- **Migration**: existing user docs still hold cumulative `exp` (e.g. L8 / 201 exp). On the next `/api/paint`, the new while-loop will burn through stored exp and catch the level up — the L8/201 user will land at roughly L11/52. Same "acceptable pre-launch" rationale as the 2026-06-06 curve retune.
+- `npx tsc --noEmit` → clean. `npm run lint` → clean.
+- **Next**: same Phase 7 polish list.
 
 ### 2026-06-06 — Leveling curve retune + cap removed
 

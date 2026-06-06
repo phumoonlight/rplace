@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { formatMmSs } from "@/lib/user/use-quota-countdown";
-import { expForLevel } from "@/lib/leveling";
+import { expCostForLevel } from "@/lib/leveling";
 import type { UserProfile } from "@/lib/user/user-profile";
 
 type ProfileSidebarProps = {
@@ -108,7 +108,6 @@ export const ProfileSidebar = ({
 
             <div className="grid grid-cols-2 gap-2">
               <Stat label="Level" value={profile.level} />
-              <Stat label="Exp" value={profile.exp} />
               <Stat label="Pixels painted" value={profile.pixelsPainted} />
               <Stat label="Quota" value={`${profile.currentQuota}/${profile.maxQuota}`} />
             </div>
@@ -145,11 +144,9 @@ const Stat = ({ label, value }: { label: string; value: string | number }) => (
 );
 
 const ExpBar = ({ level, exp }: { level: number; exp: number }) => {
-  const prevThreshold = expForLevel(level - 1);
-  const nextThreshold = expForLevel(level);
-  const intoLevel = Math.max(0, exp - prevThreshold);
-  const needed = Math.max(1, nextThreshold - prevThreshold);
-  const remaining = Math.max(0, nextThreshold - exp);
+  const needed = Math.max(1, expCostForLevel(level));
+  const intoLevel = Math.max(0, Math.min(exp, needed));
+  const remaining = Math.max(0, needed - intoLevel);
   const pct = Math.min(100, Math.max(0, (intoLevel / needed) * 100));
   return (
     <div className="flex flex-col gap-1.5 border-2 border-black bg-neutral-950 px-3 py-2">

@@ -4,20 +4,8 @@ export const QUOTA_RESTORE_INTERVAL_MS = 60_000;
 export const EXP_PER_PAINT = 1;
 
 // Per-level cost grows linearly: level n → n+1 needs 5·(n+1) exp.
-// Cumulative threshold to reach level n+1 = sum_{k=1..n} 5(k+1) = 5n(n+3)/2.
-export const expForLevel = (level: number): number => {
-  if (level <= 0) return 0;
-  return (5 * level * (level + 3)) / 2;
-};
-
-export const levelForExp = (exp: number): number => {
-  if (exp <= 0) return INITIAL_LEVEL;
-  let level = INITIAL_LEVEL;
-  while (exp >= expForLevel(level)) {
-    level += 1;
-  }
-  return level;
-};
+// `exp` on the user doc is exp within the current level — it resets on level-up.
+export const expCostForLevel = (level: number): number => 5 * (level + 1);
 
 export const maxQuotaForLevel = (level: number): number =>
   INITIAL_MAX_QUOTA + 2 * (level - INITIAL_LEVEL);
@@ -71,18 +59,36 @@ export const applyPaintProgress = (input: {
   currentQuota: number;
 }): PaintProgress => applyBulkPaintProgress({ ...input, count: 1 });
 
-export const applyBulkPaintProgress = (input: {
+export const applyBulkPaintProgress = ({
+  exp,
+  level,
+  maxQuota,
+  currentQuota,
+  count,
+}: {
   exp: number;
   level: number;
   maxQuota: number;
   currentQuota: number;
   count: number;
 }): PaintProgress => {
-  const exp = input.exp + EXP_PER_PAINT * input.count;
-  const decremented = input.currentQuota - input.count;
-  const nextLevel = levelForExp(exp);
-  const leveledUp = nextLevel > input.level;
-  const maxQuota = leveledUp ? maxQuotaForLevel(nextLevel) : input.maxQuota;
-  const currentQuota = leveledUp ? maxQuota : decremented;
-  return { exp, level: nextLevel, maxQuota, currentQuota, leveledUp };
+  let nextExp = exp + EXP_PER_PAINT * count;
+  let nextLevel = level;
+  let leveledUp = false;
+  let cost = expCostForLevel(nextLevel);
+  while (nextExp >= cost) {
+    nextExp -= cost;
+    nextLevel += 1;
+    leveledUp = true;
+    cost = expCostForLevel(nextLevel);
+  }
+  const nextMaxQuota = leveledUp ? maxQuotaForLevel(nextLevel) : maxQuota;
+  const nextCurrentQuota = leveledUp ? nextMaxQuota : currentQuota - count;
+  return {
+    exp: nextExp,
+    level: nextLevel,
+    maxQuota: nextMaxQuota,
+    currentQuota: nextCurrentQuota,
+    leveledUp,
+  };
 };

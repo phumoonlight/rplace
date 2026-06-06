@@ -142,10 +142,12 @@ Firestore document `users/{uid}`:
 
 ### Leveling
 - 1 pixel painted = 1 exp.
-- Level threshold formula: `expForLevel(n) = 5 * n * (n + 3) / 2`
-  (cumulative exp to reach level n+1: 10, 25, 45, 70, 100, …). Per-level
-  delta = `5 * (n + 1)`, so each level costs 5 more exp than the previous.
-  Pure function shared client/server.
+- `exp` on the user doc is **exp within the current level** and resets to
+  the overflow (`exp - cost`) on level-up — not a cumulative total. This
+  keeps the UI exp bar trivial (`exp / expCostForLevel(level)`) and avoids
+  storing a number that grows forever.
+- Per-level cost: `expCostForLevel(n) = 5 * (n + 1)` (level 1→2: 10, 2→3:
+  15, 3→4: 20, +5 each level). Pure function shared client/server.
 - `maxQuota(level)` = `10 + 2 * (level - 1)` (start at 10, +2 per level,
   uncapped — grows with level).
 - No level cap.
