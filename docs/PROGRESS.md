@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 2 — User profile. **Code complete, blocked on user.**
-- **Last touched**: 2026-06-06 (`/api/me`, `useMe` hook, badge + `/me` page wired — typecheck, lint, prod build all clean)
-- **Next action**: User still owes the Phase 1 Firebase console setup + `.env.local`. Once `/api/me` is reachable with a real ID token, sign in once to confirm a `users/{uid}` doc materializes in Firestore. Then proceed to Phase 3 (canvas constants, chunk math, static canvas render).
+- **Current phase**: Phase 3 — Static canvas. **Code complete, blocked on user.**
+- **Last touched**: 2026-06-06 (canvas constants/chunk/coords math, `<PixelCanvas />` with pan+zoom, orientation toggle wired into landing page — typecheck, lint, prod build all clean)
+- **Next action**: User still owes the Phase 1 Firebase console setup + `.env.local`. Once RTDB is reachable the canvas will render real chunks; today it gracefully falls back to an all-white canvas with an error banner if the RTDB read fails. Then proceed to Phase 4 (palette UI, `POST /api/paint`, Firestore quota txn, optimistic paint).
 
 ---
 
@@ -65,12 +65,12 @@
 - [x] `/me` page renders stats
 
 ### Phase 3 — Static canvas
-- [ ] `src/lib/canvas/constants.ts` (dimensions, palette, chunk size)
-- [ ] `src/lib/canvas/chunks.ts` (hex string ↔ Uint8Array)
-- [ ] `src/lib/canvas/coords.ts`
-- [ ] `<Canvas />` reads all chunks once and renders landscape
-- [ ] Pan + zoom (mouse + touch)
-- [ ] Portrait orientation toggle works
+- [x] `src/lib/canvas/constants.ts` (dimensions, palette, chunk size)
+- [x] `src/lib/canvas/chunks.ts` (hex string ↔ Uint8Array)
+- [x] `src/lib/canvas/coords.ts`
+- [x] `<Canvas />` reads all chunks once and renders landscape
+- [x] Pan + zoom (mouse + touch)
+- [x] Portrait orientation toggle works
 
 ### Phase 4 — Paint flow
 - [ ] `<Palette />` UI with 16 colors, keyboard shortcuts
@@ -108,6 +108,18 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Phase 3 code complete (still blocked on Firebase project)
+- Canvas math modules — pure, shared client/server:
+  - [src/lib/canvas/constants.ts](../src/lib/canvas/constants.ts): `Orientation` union, `ORIENTATIONS`, `CANVAS_DIMENSIONS` (landscape 800×400, portrait 400×800), `CHUNK_SIZE = 50`, and the 16-color `PALETTE` with precomputed RGB tuples (single source of truth for both `imageData` writes and the upcoming `<Palette />`).
+  - [src/lib/canvas/chunks.ts](../src/lib/canvas/chunks.ts): `decodeChunkHex`, `encodeChunkHex`, `getPixelInChunk`, `setPixelInChunk`, `EMPTY_CHUNK_HEX = "0".repeat(2500)`.
+  - [src/lib/canvas/coords.ts](../src/lib/canvas/coords.ts): `chunkKey(cy, cx) → "cy_cx"` (matches PLAN §3), `parseChunkKey`, `pixelToChunk`, `getAllChunkKeys`, `getChunkGrid`, `isPixelInBounds`.
+- UI: [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) — bulk-reads `/canvas/{orientation}/chunks` via the modular RTDB SDK, decodes each chunk into a full-resolution `ImageData` (`charCodeAt` for speed, fallback to white on bad nibbles), and `putImageData`s it onto a `<canvas width=W height=H>`. CSS `transform: translate3d + scale` drives pan/zoom; `image-rendering: pixelated` keeps the upscale crisp. Pan via Pointer Events with `setPointerCapture` (works for mouse and touch). Wheel zooms around the cursor, clamped to `[fitScale, 32x]`. ResizeObserver re-fits on container resize. If the RTDB read throws (env not configured yet), we still render an empty canvas and surface the error in a non-blocking banner — so the UI is usable before Phase 1 console setup lands.
+- [src/components/orientation-toggle.tsx](../src/components/orientation-toggle.tsx): segmented control bound to `orientation` state in [src/app/page.tsx](../src/app/page.tsx). Landing page now hosts the canvas as the primary surface with a header (title, toggle, badge/sign-in/profile link) and footer hint.
+- **Design notes**: Chose `transform`-based pan/zoom over `ctx.setTransform` so React state drives both pan and zoom and the same logic works for mouse + touch via Pointer Events. Defer pinch zoom + onscreen zoom controls to Phase 7 polish. Chunk rendering uses `charCodeAt` instead of `parseInt` per nibble to keep the cold-load tight (320k pixels × 128 chunks).
+- `npx tsc --noEmit` → clean. `npm run lint` → clean. `npm run build` → clean (`/` 3.83 kB / 241 kB First Load JS, still static prerender).
+- **Blocker**: same Phase 1 setup. With no RTDB URL the canvas shows the empty-state banner; once `.env.local` is populated the same code will read real chunks unmodified.
+- **Next**: Phase 4 — `<Palette />`, `POST /api/paint` (Firestore txn for quota/exp/level + RTDB chunk + recent event), optimistic client paint with rollback.
 
 ### 2026-06-06 — Phase 2 code complete (still blocked on Firebase project)
 - New shared types: [src/lib/user/user-profile.ts](../src/lib/user/user-profile.ts) (`UserProfile` + initial-user constants — client-safe, no `server-only`).
