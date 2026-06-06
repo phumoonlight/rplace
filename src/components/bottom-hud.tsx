@@ -66,6 +66,12 @@ export const BottomHud = ({
   const countdownLabel =
     profile && msUntilNextQuota !== null ? `+1 in ${formatMmSs(msUntilNextQuota)}` : null
 
+  const outOfQuota = canPaint && profile?.currentQuota === 0
+  const paletteDisabled = !canPaint || outOfQuota
+  // Closed-state CTA is disabled when the user can't open the palette at all
+  // (signed out) or has no quota to stage new edits.
+  const placeDisabled = !canPaint || (outOfQuota && !paletteOpen)
+
   const selectedSwatch = selectedColor !== null ? PALETTE[selectedColor] : null
 
   if (renderPalette) {
@@ -78,7 +84,7 @@ export const BottomHud = ({
           className={`${closing ? 'animate-palette-panel-out' : 'animate-palette-panel'} pointer-events-auto border-t-2 border-black bg-white px-3 py-3 text-neutral-900 shadow-[0_-4px_0_0_#000] dark:bg-neutral-900 dark:text-neutral-100`}
         >
           <Palette
-            disabled={!canPaint}
+            disabled={paletteDisabled}
             size="lg"
             value={selectedColor}
             onChange={onSelectColor}
@@ -116,6 +122,9 @@ export const BottomHud = ({
     )
   }
 
+  const label = outOfQuota ? 'Out of quota' : 'Place'
+  const sublabel = outOfQuota && countdownLabel ? countdownLabel : `${quotaLabel}${countdownLabel ? ` · ${countdownLabel}` : ''}`
+
   return (
     <div
       className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center"
@@ -123,24 +132,28 @@ export const BottomHud = ({
     >
       <div className="pointer-events-auto flex flex-col items-center gap-3">
         <button
-          className="flex min-w-50 flex-col items-center justify-center border-2 border-black bg-orange-600 px-6 py-3 text-white shadow-[4px_4px_0_0_#000] transition-colors hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400"
+          className={`flex min-w-50 flex-col items-center justify-center border-2 border-black px-6 py-3 text-white shadow-[4px_4px_0_0_#000] transition-colors disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400 ${
+            outOfQuota
+              ? 'bg-neutral-600 hover:bg-neutral-600'
+              : 'bg-orange-600 hover:bg-orange-500'
+          }`}
           type="button"
           onClick={onPlaceClick}
-          disabled={!canPaint}
+          disabled={placeDisabled}
           aria-expanded={paletteOpen}
+          aria-label={outOfQuota ? `Out of quota — refills in ${countdownLabel ?? 'soon'}` : 'Place a tile'}
         >
           <span className="flex items-center gap-2 text-xl font-semibold font-mono">
-            {selectedSwatch && (
+            {selectedSwatch && !outOfQuota && (
               <span
                 className="h-3 w-3 rounded-sm border border-white/40"
                 style={{ backgroundColor: selectedSwatch.hex }}
               />
             )}
-            Place
+            {label}
           </span>
           <span className="text-xs opacity-90 tabular-nums">
-            {quotaLabel}
-            {countdownLabel ? ` · ${countdownLabel}` : ''}
+            {sublabel}
           </span>
         </button>
       </div>

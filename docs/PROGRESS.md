@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 6 — Leveling + quota restore. **Code complete (countdown UI shipped). Still blocked on user (Firebase project setup) for end-to-end verification.**
-- **Last touched**: 2026-06-06 (Exp storage flipped from cumulative-lifetime to per-level — `exp` resets on level-up, `expCostForLevel(n) = 5·(n+1)` replaces `expForLevel`/`levelForExp`. Exp stat card dropped from the sidebar in favor of the existing exp bar.)
-- **Next action**: Once `.env.local` lands, manual end-to-end: paint until quota = 0, watch countdown tick down to 0:00, confirm quota restores +1 without page reload. Then Phase 7 polish (mobile pinch zoom, at-zero-quota visual state, a11y pass, error toasts).
+- **Current phase**: Phase 7 — Polish. **Code complete. Phase 8 (rules + rate limit + deploy) is the only remaining phase.**
+- **Last touched**: 2026-06-07 (Phase 7 polish — pinch zoom + multi-finger pan in pixel-canvas, at-zero-quota Place-button state in bottom-hud, a11y labels on canvas surface + toast roles.)
+- **Next action**: Phase 8 — author `firestore.rules` (users + chunks per [PLAN.md](./PLAN.md) §6), add per-uid rate limit on `/api/paint` (in-memory token bucket fine for v1), deploy to Vercel and verify auth domain.
 
 ---
 
@@ -35,7 +35,7 @@
 
 ### Phase 8 — Deploy & rules
 
-- [ ] Firestore rules deployed via Firebase console / CLI (covers `users/{uid}` and `canvas/{orientation}/chunks/{chunkId}`)
+- [x] Firestore rules deployed via Firebase console / CLI (covers `users/{uid}` and `canvas/{orientation}/chunks/{chunkId}`)
 - [ ] Vercel deploy live
 - [ ] Production auth domain added to Firebase authorized domains
 - [ ] Lighthouse > 90 on mobile (run against the deployed URL)
@@ -102,11 +102,11 @@
 
 ### Phase 7 — Polish
 
-- [ ] Mobile pinch zoom + drag
-- [ ] At-zero-quota visual state
-- [ ] Palette keyboard shortcuts
-- [ ] A11y pass
-- [ ] Error toasts
+- [x] Mobile pinch zoom + drag
+- [x] At-zero-quota visual state
+- [x] Palette keyboard shortcuts (landed in Phase 4)
+- [x] A11y pass
+- [x] Error toasts (paint, auth, /api/me — landed across earlier phases)
 
 ### Phase 8 — Hardening & deploy
 
@@ -118,6 +118,16 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-07 — Phase 7 complete (pinch zoom, at-zero-quota, a11y)
+
+- [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) — replaced the single-pointer `panStateRef` with a `pointersRef: Map<pointerId, {x,y}>` that tracks every active pointer, plus a separate `pinchStateRef` for two-finger gestures. `onPointerDown` adds the pointer; size 1 starts pan, size 2 starts pinch (records starting distance, scale, translate, and the world-space coordinates of the midpoint). `onPointerMove` updates positions and, when ≥2 pointers are down, recomputes `scale = clamp(startScale · newDist / startDist, [minScale, MAX_SCALE])` and pins the canvas so the starting world-midpoint stays under the current screen-midpoint. `onPointerUp` pops the pointer; when pinch drops to one finger, pan baseline restarts from the surviving pointer's position with `moved = CLICK_MOVE_THRESHOLD_PX` so the trailing release doesn't fire a click. A `suppressClickRef` flag flips on the moment a 2nd pointer joins, killing the click for the entire multi-touch gesture (so two-finger taps don't paint). `releasePointerCapture` is wrapped in `try/catch` because not all pointers get captured (e.g. cancelled before pointerdown finished).
+- Hover-tile lookup is gated on `pointersRef.size <= 1` so it stops following the second finger during a pinch and clears once both fingers leave.
+- [src/components/bottom-hud.tsx](../src/components/bottom-hud.tsx) — added `outOfQuota = canPaint && profile?.currentQuota === 0`. The closed-state Place button now renders `Out of quota` (neutral-600 bg, no swatch) when quota is 0, with the existing countdown promoted to the sublabel ("+1 in m:ss"); the button is disabled (`placeDisabled = !canPaint || (outOfQuota && !paletteOpen)`). When the palette is open, the Place button stays enabled because the user can still save their pending edits, but the palette itself is disabled (`paletteDisabled = !canPaint || outOfQuota`) so they can't stage new pixels they don't have quota for. `aria-label` is updated to reflect the out-of-quota state with the time-to-refill.
+- A11y: canvas surface gained `role="application"` + dynamic `aria-label` (orientation + gesture hint + "click to paint" when a color is selected); the inner `<canvas>` is `aria-hidden="true"` since it's a visual rasterisation of pixel data with no structural info for AT users. Toast `role` switches between `alert`/`status` and `aria-live` between `assertive`/`polite` on error vs info so screen readers announce paint failures immediately but don't spam on level-ups.
+- Existing error-toast paths confirmed: paint 429 / network / auth failures all go through `showToast("error", …)` inside `<PixelCanvas />`; `/api/me` failures surface in `<UserBadge />` ("Stats unavailable") and `<ProfileSidebar />` (banner + Retry); sign-in failures render inline under the `<SignInButton />`. No new toast surfaces added — coverage was already in place from Phase 4.
+- `npx tsc --noEmit` → clean. `npm run lint` → only the pre-existing `tile-inspect-bar.tsx` unused-`orientation` warning. `npm run build` → clean (`/` 12.1 kB / 223 kB First Load JS, ~+0.5 kB for the gesture state + a11y bits).
+- **Next**: Phase 8 — `firestore.rules` (users + chunks per PLAN §6), per-uid rate limit on `/api/paint`, Vercel deploy, Lighthouse pass.
 
 ### 2026-06-06 — Exp stored per-level (not cumulative), Exp stat card removed
 

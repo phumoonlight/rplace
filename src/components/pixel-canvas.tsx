@@ -347,6 +347,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     }
   }, [getIdToken, orientation, paintPixelLocal, onPaintSuccess, showToast]);
 
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const panStateRef = useRef<{
     id: number;
     startX: number;
@@ -355,22 +356,68 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
     startTy: number;
     moved: number;
   } | null>(null);
+  const pinchStateRef = useRef<{
+    startDist: number;
+    startScale: number;
+    startTx: number;
+    startTy: number;
+    startMidWorldX: number;
+    startMidWorldY: number;
+  } | null>(null);
+  // Suppresses click handling for the gesture that just ended via pinch.
+  const suppressClickRef = useRef(false);
 
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+  const startPan = (e: React.PointerEvent<HTMLDivElement>) => {
     panStateRef.current = {
       id: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
-      startTx: tx,
-      startTy: ty,
+      startTx: txRef.current,
+      startTy: tyRef.current,
       moved: 0,
     };
   };
 
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const startPinch = () => {
     const wrapper = wrapperRef.current;
-    if (wrapper) {
+    if (!wrapper) return;
+    const pts = Array.from(pointersRef.current.values());
+    if (pts.length < 2) return;
+    const [a, b] = pts;
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    if (dist === 0) return;
+    const rect = wrapper.getBoundingClientRect();
+    const midX = (a.x + b.x) / 2 - rect.left;
+    const midY = (a.y + b.y) / 2 - rect.top;
+    pinchStateRef.current = {
+      startDist: dist,
+      startScale: scaleRef.current,
+      startTx: txRef.current,
+      startTy: tyRef.current,
+      startMidWorldX: (midX - txRef.current) / scaleRef.current,
+      startMidWorldY: (midY - tyRef.current) / scaleRef.current,
+    };
+    panStateRef.current = null;
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 1) {
+      startPan(e);
+    } else if (pointersRef.current.size === 2) {
+      startPinch();
+      suppressClickRef.current = true;
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    const wrapper = wrapperRef.current;
+    if (wrapper && pointersRef.current.size <= 1) {
       const rect = wrapper.getBoundingClientRect();
       const localX = (e.clientX - rect.left - tx) / scale;
       const localY = (e.clientY - rect.top - ty) / scale;
@@ -381,7 +428,29 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
       } else if (hoverTile !== null) {
         setHoverTile(null);
       }
+    } else if (hoverTile !== null) {
+      setHoverTile(null);
     }
+
+    const pinch = pinchStateRef.current;
+    if (pinch && pointersRef.current.size >= 2 && wrapper) {
+      const pts = Array.from(pointersRef.current.values()).slice(0, 2);
+      const [a, b] = pts;
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (dist === 0) return;
+      const rect = wrapper.getBoundingClientRect();
+      const midX = (a.x + b.x) / 2 - rect.left;
+      const midY = (a.y + b.y) / 2 - rect.top;
+      const nextScale = Math.min(
+        Math.max(pinch.startScale * (dist / pinch.startDist), minScale),
+        MAX_SCALE,
+      );
+      setScale(nextScale);
+      setTx(midX - pinch.startMidWorldX * nextScale);
+      setTy(midY - pinch.startMidWorldY * nextScale);
+      return;
+    }
+
     const s = panStateRef.current;
     if (!s || s.id !== e.pointerId) return;
     const dx = e.clientX - s.startX;
@@ -392,17 +461,47 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   };
 
   const onPointerLeave = () => {
-    setHoverTile(null);
+    if (pointersRef.current.size === 0) setHoverTile(null);
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    const s = panStateRef.current;
-    if (!s || s.id !== e.pointerId) return;
-    const wasClick = s.moved < CLICK_MOVE_THRESHOLD_PX;
-    panStateRef.current = null;
-    (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    pointersRef.current.delete(e.pointerId);
+    try {
+      (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer was never captured by this element (e.g. cancelled before capture); ignore
+    }
 
+    const wasPinching = pinchStateRef.current !== null;
+    if (wasPinching && pointersRef.current.size < 2) {
+      pinchStateRef.current = null;
+      // If one finger remains, restart panning from its current position so the
+      // canvas doesn't snap when the user keeps dragging with the leftover finger.
+      const remaining = pointersRef.current.entries().next();
+      if (!remaining.done) {
+        const [id, pt] = remaining.value;
+        panStateRef.current = {
+          id,
+          startX: pt.x,
+          startY: pt.y,
+          startTx: txRef.current,
+          startTy: tyRef.current,
+          moved: CLICK_MOVE_THRESHOLD_PX,
+        };
+      }
+    }
+
+    if (pointersRef.current.size > 0) return;
+
+    const s = panStateRef.current;
+    panStateRef.current = null;
+    const suppressed = suppressClickRef.current;
+    suppressClickRef.current = false;
+    if (!s || s.id !== e.pointerId) return;
+    if (suppressed) return;
+    const wasClick = s.moved < CLICK_MOVE_THRESHOLD_PX;
     if (!wasClick) return;
+
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const rect = wrapper.getBoundingClientRect();
@@ -506,6 +605,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onPointerLeave={onPointerLeave}
+        role="application"
+        aria-label={`${orientation} pixel canvas — drag to pan, scroll or pinch to zoom${selectedColor !== null && canPaint ? ", click to paint" : ""}`}
       >
         <canvas
           className="absolute left-0 top-0 origin-top-left select-none"
@@ -516,6 +617,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
           }}
           width={dims.width}
           height={dims.height}
+          aria-hidden="true"
         />
         {Array.from(pendingEdits.values()).map((edit) => (
           <TileReticle
@@ -553,7 +655,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
               ? "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-100"
               : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
           ].join(" ")}
-          role="status"
+          role={toast.kind === "error" ? "alert" : "status"}
+          aria-live={toast.kind === "error" ? "assertive" : "polite"}
         >
           {toast.text}
         </div>
