@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth/auth-context";
 import { formatMmSs } from "@/lib/user/use-quota-countdown";
+import { expForLevel } from "@/lib/leveling";
 import type { UserProfile } from "@/lib/user/user-profile";
 
 type ProfileSidebarProps = {
@@ -103,6 +104,8 @@ export const ProfileSidebar = ({
               </div>
             </div>
 
+            <ExpBar level={profile.level} exp={profile.exp} />
+
             <div className="grid grid-cols-2 gap-2">
               <Stat label="Level" value={profile.level} />
               <Stat label="Exp" value={profile.exp} />
@@ -140,3 +143,33 @@ const Stat = ({ label, value }: { label: string; value: string | number }) => (
     <span className="text-base font-semibold">{value}</span>
   </div>
 );
+
+const ExpBar = ({ level, exp }: { level: number; exp: number }) => {
+  const prevThreshold = expForLevel(level - 1);
+  const nextThreshold = expForLevel(level);
+  const intoLevel = Math.max(0, exp - prevThreshold);
+  const needed = Math.max(1, nextThreshold - prevThreshold);
+  const remaining = Math.max(0, nextThreshold - exp);
+  const pct = Math.min(100, Math.max(0, (intoLevel / needed) * 100));
+  return (
+    <div className="flex flex-col gap-1.5 border-2 border-black bg-neutral-950 px-3 py-2">
+      <div className="flex items-baseline justify-between text-[10px] uppercase tracking-wide text-neutral-500">
+        <span>
+          Lv {level} → Lv {level + 1}
+        </span>
+        <span className="tabular-nums text-neutral-400">
+          {intoLevel.toLocaleString()} / {needed.toLocaleString()} exp
+        </span>
+      </div>
+      <div className="h-2 w-full border border-black bg-neutral-800">
+        <div
+          className="h-full bg-emerald-500 transition-[width] duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[11px] text-neutral-500 tabular-nums">
+        {remaining.toLocaleString()} exp to next level
+      </span>
+    </div>
+  );
+};

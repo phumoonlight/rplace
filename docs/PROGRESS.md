@@ -119,6 +119,14 @@
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
 
+### 2026-06-06 — Leveling curve retune + cap removed
+
+- [src/lib/leveling.ts](../src/lib/leveling.ts) — replaced `expForLevel(n) = 50·n·(n+1)` with `5·n·(n+3)/2`. Per-level cost is now `5·(n+1)` (1→2: 10, 2→3: 15, 3→4: 20, +5 each level) — much faster early progression than the old curve (was 100/200/300/…).
+- Dropped `MAX_QUOTA_CAP`; `maxQuotaForLevel(level) = 10 + 2·(level − 1)` is now uncapped, growing with level forever. No level cap either.
+- [docs/PLAN.md](./PLAN.md) §4 updated to match the new formulas.
+- Existing exp bar in [src/components/profile-sidebar.tsx](../src/components/profile-sidebar.tsx) picks up the new curve via `expForLevel` — no component change needed.
+- **Compat note**: stored `level` values for existing users no longer match the new curve. On the next `/api/paint`, `applyPaintProgress` will recompute `level` from `exp` using the new thresholds, which means many users will jump several levels in one paint as the recomputation catches up. Acceptable since this is pre-launch; if it weren't, we'd need a one-shot migration over `users/{uid}`.
+
 ### 2026-06-06 — Phase 6 complete (live quota countdown)
 
 - [src/lib/user/use-quota-countdown.ts](../src/lib/user/use-quota-countdown.ts) — new hook + `formatMmSs` helper. Owns a 1-second `setInterval` that updates an internal `now`, runs the shared `restoreQuota` from [src/lib/leveling.ts](../src/lib/leveling.ts) against the current profile, and `setProfile`s the result whenever `currentQuota` or `lastQuotaRestoreAt` change — so quota restores in the UI without an `/api/me` round-trip. Returns `msUntilNextQuota: number | null` (null at max). Returning null from the hook short-circuits the badge/footer "+1 in …" line entirely, which doubles as the at-max indicator.

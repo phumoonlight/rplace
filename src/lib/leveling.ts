@@ -1,10 +1,14 @@
 export const INITIAL_LEVEL = 1;
 export const INITIAL_MAX_QUOTA = 10;
-export const MAX_QUOTA_CAP = 100;
 export const QUOTA_RESTORE_INTERVAL_MS = 60_000;
 export const EXP_PER_PAINT = 1;
 
-export const expForLevel = (level: number): number => 50 * level * (level + 1);
+// Per-level cost grows linearly: level n → n+1 needs 5·(n+1) exp.
+// Cumulative threshold to reach level n+1 = sum_{k=1..n} 5(k+1) = 5n(n+3)/2.
+export const expForLevel = (level: number): number => {
+  if (level <= 0) return 0;
+  return (5 * level * (level + 3)) / 2;
+};
 
 export const levelForExp = (exp: number): number => {
   if (exp <= 0) return INITIAL_LEVEL;
@@ -16,7 +20,7 @@ export const levelForExp = (exp: number): number => {
 };
 
 export const maxQuotaForLevel = (level: number): number =>
-  Math.min(INITIAL_MAX_QUOTA + 2 * (level - INITIAL_LEVEL), MAX_QUOTA_CAP);
+  INITIAL_MAX_QUOTA + 2 * (level - INITIAL_LEVEL);
 
 export type QuotaRestoreInput = {
   currentQuota: number;
