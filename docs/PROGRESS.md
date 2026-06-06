@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 1 — Firebase wiring. **Code complete, blocked on user.**
-- **Last touched**: 2026-06-06 (Firebase SDK init, AuthProvider, sign-in UI — typecheck + lint clean)
-- **Next action**: User must create the Firebase project in the console, enable Google sign-in + Firestore + RTDB, then populate `.env.local` from `.env.example`. Once that's done, sign-in is end-to-end testable. Then proceed to Phase 2 (`/api/me` + user profile doc).
+- **Current phase**: Phase 2 — User profile. **Code complete, blocked on user.**
+- **Last touched**: 2026-06-06 (`/api/me`, `useMe` hook, badge + `/me` page wired — typecheck, lint, prod build all clean)
+- **Next action**: User still owes the Phase 1 Firebase console setup + `.env.local`. Once `/api/me` is reachable with a real ID token, sign in once to confirm a `users/{uid}` doc materializes in Firestore. Then proceed to Phase 3 (canvas constants, chunk math, static canvas render).
 
 ---
 
@@ -59,10 +59,10 @@
 - [x] Root layout wraps children in `<AuthProvider>`; landing page shows sign-in or badge
 
 ### Phase 2 — User profile
-- [ ] `verifyIdToken` helper
-- [ ] `GET /api/me` returns/creates user doc
-- [ ] `<UserBadge />` renders in header
-- [ ] `/me` page renders stats
+- [x] `verifyIdToken` helper (landed in Phase 1)
+- [x] `GET /api/me` returns/creates user doc
+- [x] `<UserBadge />` renders header stats (level / quota / exp from `/api/me`)
+- [x] `/me` page renders stats
 
 ### Phase 3 — Static canvas
 - [ ] `src/lib/canvas/constants.ts` (dimensions, palette, chunk size)
@@ -108,6 +108,17 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Phase 2 code complete (still blocked on Firebase project)
+- New shared types: [src/lib/user/user-profile.ts](../src/lib/user/user-profile.ts) (`UserProfile` + initial-user constants — client-safe, no `server-only`).
+- Server doc helpers: [src/lib/user/user-doc.ts](../src/lib/user/user-doc.ts) (`newUserDoc` returns a Firestore write payload using `FieldValue.serverTimestamp()`; `serializeUserDoc` converts `Timestamp` → `number` ms for the wire).
+- Route: [src/app/api/me/route.ts](../src/app/api/me/route.ts) verifies the Bearer ID token, gets/creates `users/{uid}`, returns the serialized profile. 401 on missing/invalid token.
+- Client: [src/lib/user/use-me.ts](../src/lib/user/use-me.ts) hook fetches `/api/me` with a fresh ID token on auth change and exposes `{ profile, loading, error, reload }`.
+- UI: [src/components/user-badge.tsx](../src/components/user-badge.tsx) now shows `Lv X · curr/max · exp`. [src/app/me/page.tsx](../src/app/me/page.tsx) renders the full stats grid (level, exp, lifetime pixels, quota, join date) with a retry button. Landing page links to `/me`.
+- **Design notes**: Split user types across two modules because `server-only` propagates to consumers. Keeping `UserProfile` in a plain module lets the client import it for typing without pulling Admin SDK.
+- `npx tsc --noEmit` → clean. `npm run lint` → clean. `npm run build` → clean (routes: `/`, `/me` static; `/api/me` dynamic).
+- **Blocker**: still the Phase 1 console setup — without `.env.local` no real ID token can be verified. Code is otherwise ready.
+- **Next**: Phase 3 — canvas constants + chunk math + static `<Canvas />` render.
 
 ### 2026-06-06 — Phase 1 code complete (blocked on Firebase project)
 - Wrote [src/lib/firebase/client.ts](../src/lib/firebase/client.ts) (lazy getters for `Auth`, `Firestore`, `Database`) and [src/lib/firebase/admin.ts](../src/lib/firebase/admin.ts) (Admin SDK singleton under a named app, throws if env vars missing; handles `\n`-escaped private keys).
