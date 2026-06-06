@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 4 — Paint flow. **Code complete. Still blocked on user (Firebase project setup) for end-to-end verification.**
-- **Last touched**: 2026-06-06 (Phase 4: `<Palette />`, `POST /api/paint` with single two-doc Firestore txn, optimistic client paint + rollback + 429 toast, shared `src/lib/leveling.ts`; typecheck, lint, prod build all clean. First Load JS on `/` is 220 kB.)
-- **Next action**: Once `.env.local` lands, manual end-to-end sign-in → paint → quota decrement → exp/level update. Then Phase 5 (`onSnapshot` on chunks collection for live updates from other clients). The paint route already increments `v` on the chunk doc, so the Phase 5 listener has its dedupe key.
+- **Current phase**: Phase 5 — Live updates. **Code complete. Still blocked on user (Firebase project setup) for end-to-end verification.**
+- **Last touched**: 2026-06-06 (Phase 5: replaced one-shot `getDocs` in `<PixelCanvas />` with a Firestore `onSnapshot` subscription on `canvas/{orientation}/chunks`, per-chunk `v`-based dedupe, blit-only-changed-chunks via per-chunk `putImageData`; typecheck, lint, prod build all clean. First Load JS on `/` 5.46 kB / 220 kB.)
+- **Next action**: Once `.env.local` lands, manual end-to-end test: open two browser windows, paint in one, confirm the pixel appears in the other within ~hundreds of ms. Then Phase 7 polish (Phase 6 leveling math is already done; only the live quota-tick countdown UI is left).
 
 ---
 
@@ -90,8 +90,8 @@
 
 ### Phase 5 — Live updates
 
-- [ ] Firestore `onSnapshot` subscription on `canvas/{orientation}/chunks` collection
-- [ ] Other users' pixels appear without refresh (chunk-doc snapshot drives the offscreen blit)
+- [x] Firestore `onSnapshot` subscription on `canvas/{orientation}/chunks` collection
+- [x] Other users' pixels appear without refresh (chunk-doc snapshot drives the offscreen blit)
 
 ### Phase 6 — Leveling + quota restore
 
@@ -118,6 +118,17 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Phase 5 complete (live updates)
+
+- [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) — replaced the one-shot `getDocs(collection(db, "canvas", o, "chunks"))` with `onSnapshot` on the same collection. First snapshot delivers every chunk as an `added` docChange and flips status from "loading" → "ready"; subsequent paints (ours or anyone else's) deliver a single `modified` docChange that triggers a per-chunk blit.
+- Per-chunk dedupe via new `chunkVersionsRef: Map<string, number>`: skip a snapshot if its `v <= prevV`. `submitPaint` records the server-returned `chunkVersion` after a successful POST so the snapshot echo of our own write is skipped (we already drew it optimistically; the server reply confirms the version we should now ignore).
+- Rendering now uses a per-chunk `blitChunk` helper (50×50 `ImageData` + `putImageData` at `cx*50, cy*50`) instead of decoding the whole 800×400 canvas on every change. Dropped the old `drawChunkOntoImageData` + `renderChunks` whole-canvas re-build and the `getAllChunkKeys` import. Initial background is one `fillRect` in palette[0] so missing chunks read as white without a per-chunk pre-render.
+- Cleanup: `onSnapshot` unsubscribe runs on unmount + on orientation change (the effect re-runs and the old subscription is torn down before the new one is created). `cancelled` flag still guards the handler against late callbacks during teardown.
+- **Design notes**: Using the snapshot's `docChanges()` rather than full-collection iteration means the steady-state cost of a remote paint is one 50×50 blit (2,500 pixel writes) instead of redrawing 320,000 pixels. Tracking `v` per chunk also makes us robust to snapshot batching — if the listener fires once with two chunks at v=N and v=N+1, both apply in order; if a stale buffered fire comes in at v=N-1 for some reason, it's discarded.
+- `npx tsc --noEmit` → clean. `npm run lint` → clean. `npm run build` → clean (`/` 5.46 kB / 220 kB First Load JS — identical to Phase 4; `onSnapshot` is already pulled in via the existing `firebase/firestore` import).
+- **Blocker**: same Phase 1 console + `.env.local`. Two-tab live-update verification needs a real Firestore project.
+- **Next**: Phase 7 polish — at-zero-quota visual state, error-toast pass, mobile pinch zoom. Phase 6's only outstanding item is the live countdown UI to the next quota tick.
 
 ### 2026-06-06 — Phase 4 complete (paint flow)
 

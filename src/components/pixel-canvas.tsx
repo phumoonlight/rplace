@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { getFirebaseDb } from "@/lib/firebase/client";
 import {
   CANVAS_DIMENSIONS,
@@ -12,7 +12,6 @@ import {
 import { EMPTY_CHUNK_HEX, localIndex } from "@/lib/canvas/chunks";
 import {
   chunkKey,
-  getAllChunkKeys,
   isPixelInBounds,
   parseChunkKey,
   pixelToChunk,
@@ -45,28 +44,26 @@ const nibbleToIndex = (hex: string, i: number): number => {
   return idx >= 0 && idx < PALETTE.length ? idx : 0;
 };
 
-const drawChunkOntoImageData = (
-  imageData: ImageData,
+const PIXELS_PER_CHUNK = CHUNK_SIZE * CHUNK_SIZE;
+
+const blitChunk = (
+  ctx: CanvasRenderingContext2D,
   hex: string | undefined,
   cx: number,
   cy: number,
 ) => {
-  const { data, width } = imageData;
-  const startX = cx * CHUNK_SIZE;
-  const startY = cy * CHUNK_SIZE;
-  for (let ly = 0; ly < CHUNK_SIZE; ly++) {
-    const py = startY + ly;
-    for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-      const px = startX + lx;
-      const idx = hex ? nibbleToIndex(hex, ly * CHUNK_SIZE + lx) : 0;
-      const [r, g, b] = PALETTE[idx].rgb;
-      const di = (py * width + px) * 4;
-      data[di] = r;
-      data[di + 1] = g;
-      data[di + 2] = b;
-      data[di + 3] = 255;
-    }
+  const imageData = ctx.createImageData(CHUNK_SIZE, CHUNK_SIZE);
+  const { data } = imageData;
+  for (let i = 0; i < PIXELS_PER_CHUNK; i++) {
+    const idx = hex ? nibbleToIndex(hex, i) : 0;
+    const [r, g, b] = PALETTE[idx].rgb;
+    const di = i * 4;
+    data[di] = r;
+    data[di + 1] = g;
+    data[di + 2] = b;
+    data[di + 3] = 255;
   }
+  ctx.putImageData(imageData, cx * CHUNK_SIZE, cy * CHUNK_SIZE);
 };
 
 export const PixelCanvas = ({
@@ -79,6 +76,7 @@ export const PixelCanvas = ({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chunksRef = useRef<Map<string, string>>(new Map());
+  const chunkVersionsRef = useRef<Map<string, number>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: "info" | "error"; text: string } | null>(null);
@@ -131,48 +129,64 @@ export const PixelCanvas = ({
 
   useEffect(() => {
     let cancelled = false;
+    let firstSnapshot = true;
     setStatus("loading");
     setErrorMsg(null);
+    chunksRef.current = new Map();
+    chunkVersionsRef.current = new Map();
 
-    const renderChunks = (chunks: Map<string, string>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = dims.width;
-      canvas.height = dims.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const imageData = ctx.createImageData(dims.width, dims.height);
-      for (const key of getAllChunkKeys(orientation)) {
-        const { cx, cy } = parseChunkKey(key);
-        drawChunkOntoImageData(imageData, chunks.get(key), cx, cy);
-      }
-      ctx.putImageData(imageData, 0, 0);
-    };
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = dims.width;
+    canvas.height = dims.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    // Background = palette[0] for every cell; missing chunks just stay this color.
+    ctx.fillStyle = PALETTE[0].hex;
+    ctx.fillRect(0, 0, dims.width, dims.height);
 
-    (async () => {
-      try {
-        const db = getFirebaseDb();
-        const snap = await getDocs(collection(db, "canvas", orientation, "chunks"));
-        if (cancelled) return;
-        const chunks = new Map<string, string>();
-        snap.forEach((doc) => {
-          const hex = (doc.data() as { hex?: unknown }).hex;
-          if (typeof hex === "string") chunks.set(doc.id, hex);
-        });
-        chunksRef.current = chunks;
-        renderChunks(chunks);
-        setStatus("ready");
-      } catch (e) {
-        if (cancelled) return;
-        chunksRef.current = new Map();
-        renderChunks(chunksRef.current);
-        setStatus("error");
-        setErrorMsg(e instanceof Error ? e.message : String(e));
-      }
-    })();
+    let unsubscribe: (() => void) | null = null;
+    try {
+      const db = getFirebaseDb();
+      unsubscribe = onSnapshot(
+        collection(db, "canvas", orientation, "chunks"),
+        (snap) => {
+          if (cancelled) return;
+          snap.docChanges().forEach((change) => {
+            if (change.type === "removed") return;
+            const data = change.doc.data() as { hex?: unknown; v?: unknown };
+            const hex = typeof data.hex === "string" ? data.hex : undefined;
+            if (!hex) return;
+            const v = typeof data.v === "number" ? data.v : 0;
+            const key = change.doc.id;
+            // Dedupe: skip stale snapshots and echoes of our own optimistic writes
+            // (submitPaint records the new v on success).
+            const prevV = chunkVersionsRef.current.get(key) ?? -1;
+            if (v <= prevV) return;
+            chunkVersionsRef.current.set(key, v);
+            chunksRef.current.set(key, hex);
+            const { cx, cy } = parseChunkKey(key);
+            blitChunk(ctx, hex, cx, cy);
+          });
+          if (firstSnapshot) {
+            firstSnapshot = false;
+            setStatus("ready");
+          }
+        },
+        (err) => {
+          if (cancelled) return;
+          setStatus("error");
+          setErrorMsg(err.message);
+        },
+      );
+    } catch (e) {
+      setStatus("error");
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+    }
 
     return () => {
       cancelled = true;
+      if (unsubscribe) unsubscribe();
     };
   }, [orientation, dims.width, dims.height]);
 
@@ -228,6 +242,8 @@ export const PixelCanvas = ({
           return;
         }
         const data = (await res.json()) as PaintResponse;
+        const { cx, cy } = pixelToChunk(x, y);
+        chunkVersionsRef.current.set(chunkKey(cy, cx), data.chunkVersion);
         onPaintSuccess?.(data);
         if (data.leveledUp) {
           showToast("info", `Level up! → Lv ${data.profile.level}`);
