@@ -23,14 +23,14 @@ export const SignInButton = () => {
   return (
     <div className="flex flex-col items-center gap-2">
       <button
-        className="border-2 border-black bg-white px-4 py-2 text-sm font-medium text-black shadow-[3px_3px_0_0_#000] hover:bg-neutral-200 disabled:opacity-50"
+        className="border-2 border-black bg-white px-4 py-2 text-sm font-medium text-black shadow-[3px_3px_0_0_#000] hover:bg-neutral-200 disabled:opacity-50 dark:bg-neutral-100 dark:hover:bg-white"
         type="button"
         onClick={onClick}
         disabled={busy}
       >
         {busy ? "Signing in…" : "Sign in with Google"}
       </button>
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 };

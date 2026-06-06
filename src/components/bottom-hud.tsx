@@ -75,7 +75,7 @@ export const BottomHud = ({
         ref={rootRef}
       >
         <div
-          className={`${closing ? 'animate-palette-panel-out' : 'animate-palette-panel'} pointer-events-auto border-t-2 border-black bg-neutral-900 px-3 py-3 shadow-[0_-4px_0_0_#000]`}
+          className={`${closing ? 'animate-palette-panel-out' : 'animate-palette-panel'} pointer-events-auto border-t-2 border-black bg-white px-3 py-3 text-neutral-900 shadow-[0_-4px_0_0_#000] dark:bg-neutral-900 dark:text-neutral-100`}
         >
           <Palette
             disabled={!canPaint}
@@ -85,7 +85,7 @@ export const BottomHud = ({
           />
           <div className="animate-palette-actions mt-3 flex items-center justify-center gap-3">
             <button
-              className="flex h-11 w-20 items-center justify-center border-2 border-black bg-white text-2xl leading-none text-black shadow-[3px_3px_0_0_#000] hover:bg-neutral-100"
+              className="flex h-11 w-20 items-center justify-center border-2 border-black bg-neutral-200 text-2xl leading-none text-black shadow-[3px_3px_0_0_#000] hover:bg-neutral-300 dark:bg-white dark:hover:bg-neutral-100"
               type="button"
               onClick={onEscape}
               aria-label="Cancel"
@@ -93,7 +93,7 @@ export const BottomHud = ({
             >
               ✕
             </button>
-            <div className="flex flex-col items-center text-[11px] text-neutral-300 tabular-nums leading-tight">
+            <div className="flex flex-col items-center text-[11px] text-neutral-700 tabular-nums leading-tight dark:text-neutral-300">
               <span>{quotaLabel}</span>
               <span className="text-neutral-500">
                 {pendingCount > 0 ? `${pendingCount} pending` : 'no edits yet'}
@@ -101,7 +101,7 @@ export const BottomHud = ({
               </span>
             </div>
             <button
-              className="flex h-11 w-20 items-center justify-center border-2 border-black bg-emerald-600 text-2xl leading-none text-white shadow-[3px_3px_0_0_#000] hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
+              className="flex h-11 w-20 items-center justify-center border-2 border-black bg-emerald-600 text-2xl leading-none text-white shadow-[3px_3px_0_0_#000] hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400"
               type="button"
               onClick={onPlaceClick}
               disabled={!canPaint || pendingCount === 0}
@@ -123,7 +123,7 @@ export const BottomHud = ({
     >
       <div className="pointer-events-auto flex flex-col items-center gap-3">
         <button
-          className="flex min-w-50 flex-col items-center justify-center border-2 border-black bg-orange-600 px-6 py-3 text-white shadow-[4px_4px_0_0_#000] transition-colors hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
+          className="flex min-w-50 flex-col items-center justify-center border-2 border-black bg-orange-600 px-6 py-3 text-white shadow-[4px_4px_0_0_#000] transition-colors hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 dark:disabled:bg-neutral-700 dark:disabled:text-neutral-400"
           type="button"
           onClick={onPlaceClick}
           disabled={!canPaint}

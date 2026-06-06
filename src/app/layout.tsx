@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/lib/auth/auth-context";
+import { ThemeProvider, THEME_INIT_SCRIPT } from "@/lib/theme/theme-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,8 +13,13 @@ type RootLayoutProps = Readonly<{ children: React.ReactNode }>;
 const RootLayout = ({ children }: RootLayoutProps) => {
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

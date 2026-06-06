@@ -81,13 +81,13 @@ export const TileInfoCard = ({ orientation, tile, snapshot, onClose }: TileInfoC
       onClick={onClose}
     >
       <div
-        className="w-[min(92vw,420px)] border-2 border-black bg-neutral-900 text-neutral-100 shadow-[4px_4px_0_0_#000]"
+        className="w-[min(92vw,420px)] border-2 border-black bg-white text-neutral-900 shadow-[4px_4px_0_0_#000] dark:bg-neutral-900 dark:text-neutral-100"
         onClick={(e) => e.stopPropagation()}
       >
-      <div className="flex items-center justify-between border-b-2 border-black bg-neutral-800 px-3 py-2">
+      <div className="flex items-center justify-between border-b-2 border-black bg-neutral-200 px-3 py-2 dark:bg-neutral-800">
         <span className="text-sm font-semibold">Share tile</span>
         <button
-          className="flex h-6 w-6 items-center justify-center border-2 border-black bg-neutral-900 text-xs leading-none text-neutral-200 hover:bg-neutral-700"
+          className="flex h-6 w-6 items-center justify-center border-2 border-black bg-white text-xs leading-none text-neutral-900 hover:bg-neutral-100 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-700"
           type="button"
           onClick={onClose}
           aria-label="Close"
@@ -97,16 +97,16 @@ export const TileInfoCard = ({ orientation, tile, snapshot, onClose }: TileInfoC
       </div>
 
       <div className="space-y-3 p-3">
-        <div className="text-xs text-neutral-400">
+        <div className="text-xs text-neutral-600 dark:text-neutral-400">
           Coordinates:{' '}
-          <span className="font-mono tabular-nums text-neutral-100">
+          <span className="font-mono tabular-nums text-neutral-900 dark:text-neutral-100">
             {orientation} · {tile.x}, {tile.y}
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           <input
-            className="flex-1 border-2 border-black bg-neutral-950 px-2 py-1.5 font-mono text-[11px] text-neutral-200 outline-none"
+            className="flex-1 border-2 border-black bg-neutral-100 px-2 py-1.5 font-mono text-[11px] text-neutral-900 outline-none dark:bg-neutral-950 dark:text-neutral-200"
             type="text"
             readOnly
             value={shareUrl}
@@ -123,8 +123,8 @@ export const TileInfoCard = ({ orientation, tile, snapshot, onClose }: TileInfoC
 
         {snapshot && (
           <div className="space-y-2">
-            <div className="text-xs text-neutral-400">Image</div>
-            <div className="border-2 border-black bg-neutral-950 p-1">
+            <div className="text-xs text-neutral-600 dark:text-neutral-400">Image</div>
+            <div className="border-2 border-black bg-neutral-100 p-1 dark:bg-neutral-950">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className="block w-full"

@@ -11,6 +11,7 @@ import {
 } from "@/components/pixel-canvas";
 import { ProfileSidebar } from "@/components/profile-sidebar";
 import { SignInButton } from "@/components/sign-in-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { TileInfoCard } from "@/components/tile-info-card";
 import { TileInspectBar } from "@/components/tile-inspect-bar";
 import { UserBadge } from "@/components/user-badge";
@@ -76,7 +77,7 @@ const Home = () => {
   }, []);
 
   return (
-    <main className="relative h-dvh w-screen overflow-hidden bg-neutral-950 text-neutral-100">
+    <main className="relative h-dvh w-screen overflow-hidden bg-neutral-100 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <PixelCanvas
         canPaint={canPaint}
         currentQuota={profile?.currentQuota ?? null}
@@ -90,15 +91,18 @@ const Home = () => {
         onTileInspect={handleTileInspect}
       />
 
-      <div className="pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-2">
-        <button
-          className="pointer-events-auto flex h-10 w-10 items-center justify-center border-2 border-black bg-neutral-900 text-lg font-bold text-neutral-200 shadow-[3px_3px_0_0_#000] hover:bg-neutral-800"
-          type="button"
-          onClick={() => setHelpOpen(true)}
-          aria-label="How to play"
-        >
-          ?
-        </button>
+      <div className="pointer-events-none absolute top-3 left-3 z-10 flex items-start gap-2">
+        <div className="pointer-events-auto flex flex-col gap-2">
+          <button
+            className="flex h-10 w-10 items-center justify-center border-2 border-black bg-white text-lg font-bold text-neutral-900 shadow-[3px_3px_0_0_#000] hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            aria-label="How to play"
+          >
+            ?
+          </button>
+          <ThemeToggle />
+        </div>
         <div className="pointer-events-auto">
           <OrientationToggle value={orientation} onChange={setOrientation} />
         </div>

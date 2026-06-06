@@ -48,13 +48,13 @@ export const ProfileSidebar = ({
 
   return (
     <aside
-      className="absolute top-4 right-4 bottom-4 z-30 flex w-85 max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-2 border-black bg-neutral-900 text-neutral-100 shadow-[6px_6px_0_0_#000]"
+      className="absolute top-4 right-4 bottom-4 z-30 flex w-85 max-w-[calc(100vw-2rem)] flex-col overflow-hidden border-2 border-black bg-white text-neutral-900 shadow-[6px_6px_0_0_#000] dark:bg-neutral-900 dark:text-neutral-100"
       aria-label="Your profile"
     >
       <header className="flex items-center justify-between border-b-2 border-black px-4 py-3">
         <h2 className="text-base font-bold">Your profile</h2>
         <button
-          className="flex h-7 w-7 items-center justify-center border-2 border-black bg-neutral-800 hover:bg-neutral-700"
+          className="flex h-7 w-7 items-center justify-center border-2 border-black bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700"
           type="button"
           onClick={onClose}
           aria-label="Close"
@@ -72,10 +72,10 @@ export const ProfileSidebar = ({
         )}
 
         {error && (
-          <div className="flex items-center justify-between border-2 border-black bg-red-950 px-3 py-2 text-sm text-red-200">
+          <div className="flex items-center justify-between border-2 border-black bg-red-100 px-3 py-2 text-sm text-red-900 dark:bg-red-950 dark:text-red-200">
             <span>Couldn’t load stats: {error}</span>
             <button
-              className="border-2 border-black bg-red-900 px-2 py-1 text-xs hover:bg-red-800"
+              className="border-2 border-black bg-red-200 px-2 py-1 text-xs hover:bg-red-300 dark:bg-red-900 dark:hover:bg-red-800"
               type="button"
               onClick={() => reload()}
             >
@@ -97,7 +97,7 @@ export const ProfileSidebar = ({
               )}
               <div className="flex flex-col">
                 <span className="text-base font-semibold">{profile.displayName}</span>
-                <span className="text-xs text-neutral-400">{user.email}</span>
+                <span className="text-xs text-neutral-600 dark:text-neutral-400">{user.email}</span>
                 <span className="text-[11px] text-neutral-500">
                   Joined {formatDate(profile.createdAt)}
                 </span>
@@ -125,7 +125,7 @@ export const ProfileSidebar = ({
 
       <footer className="border-t-2 border-black px-4 py-3">
         <button
-          className="w-full border-2 border-black bg-neutral-800 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-700"
+          className="w-full border-2 border-black bg-neutral-200 px-3 py-2 text-xs text-neutral-800 hover:bg-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
           type="button"
           onClick={() => signOut()}
         >
@@ -137,7 +137,7 @@ export const ProfileSidebar = ({
 };
 
 const Stat = ({ label, value }: { label: string; value: string | number }) => (
-  <div className="flex flex-col gap-0.5 border-2 border-black bg-neutral-950 px-3 py-2">
+  <div className="flex flex-col gap-0.5 border-2 border-black bg-neutral-100 px-3 py-2 dark:bg-neutral-950">
     <span className="text-[10px] uppercase tracking-wide text-neutral-500">{label}</span>
     <span className="text-base font-semibold">{value}</span>
   </div>
@@ -149,16 +149,16 @@ const ExpBar = ({ level, exp }: { level: number; exp: number }) => {
   const remaining = Math.max(0, needed - intoLevel);
   const pct = Math.min(100, Math.max(0, (intoLevel / needed) * 100));
   return (
-    <div className="flex flex-col gap-1.5 border-2 border-black bg-neutral-950 px-3 py-2">
+    <div className="flex flex-col gap-1.5 border-2 border-black bg-neutral-100 px-3 py-2 dark:bg-neutral-950">
       <div className="flex items-baseline justify-between text-[10px] uppercase tracking-wide text-neutral-500">
         <span>
           Lv {level} → Lv {level + 1}
         </span>
-        <span className="tabular-nums text-neutral-400">
+        <span className="tabular-nums text-neutral-600 dark:text-neutral-400">
           {intoLevel.toLocaleString()} / {needed.toLocaleString()} exp
         </span>
       </div>
-      <div className="h-2 w-full border border-black bg-neutral-800">
+      <div className="h-2 w-full border border-black bg-neutral-300 dark:bg-neutral-800">
         <div
           className="h-full bg-emerald-500 transition-[width] duration-300"
           style={{ width: `${pct}%` }}

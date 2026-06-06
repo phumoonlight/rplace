@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
+}
+
+html.dark {
   color-scheme: dark;
 }
 
@@ -8,8 +14,8 @@ html,
 body {
   height: 100%;
   margin: 0;
-  background: #0a0a0a;
-  color: #ededed;
+  background: #f5f5f5;
+  color: #171717;
   font-family:
     ui-sans-serif,
     system-ui,
@@ -19,6 +25,11 @@ body {
     'Helvetica Neue',
     Arial,
     sans-serif;
+}
+
+html.dark body {
+  background: #0a0a0a;
+  color: #ededed;
 }
 
 button:enabled {

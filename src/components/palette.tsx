@@ -13,7 +13,7 @@ export type PaletteProps = {
 const SHORTCUT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "q", "w", "e", "r", "t", "y"] as const;
 
 const SIZE_CLASSES = {
-  sm: { container: "gap-1.5 p-2 bg-neutral-950", swatch: "h-7 w-7" },
+  sm: { container: "gap-1.5 p-2 bg-neutral-100 dark:bg-neutral-950", swatch: "h-7 w-7" },
   lg: { container: "gap-2 p-0", swatch: "h-10 w-10 sm:h-12 sm:w-12" },
 } as const;
 

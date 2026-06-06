@@ -29,7 +29,7 @@ export const UserBadge = ({
 
   return (
     <button
-      className="flex flex-col border-2 border-black bg-neutral-900 text-left text-sm shadow-[3px_3px_0_0_#000] transition-colors hover:bg-neutral-800"
+      className="flex flex-col border-2 border-black bg-white text-left text-sm text-neutral-900 shadow-[3px_3px_0_0_#000] transition-colors hover:bg-neutral-100 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
       type="button"
       onClick={onClick}
       aria-label="Open profile"
@@ -47,18 +47,18 @@ export const UserBadge = ({
         <div className="flex flex-col leading-tight">
           <span className="font-medium">{displayName}</span>
           {profile ? (
-            <span className="text-xs text-neutral-400">
+            <span className="text-xs text-neutral-600 dark:text-neutral-400">
               Lv {profile.level} · {profile.currentQuota}/{profile.maxQuota}
             </span>
           ) : loading ? (
             <span className="text-xs text-neutral-500">Loading stats…</span>
           ) : error ? (
-            <span className="text-xs text-red-400">Stats unavailable</span>
+            <span className="text-xs text-red-600 dark:text-red-400">Stats unavailable</span>
           ) : (
-            <span className="text-xs text-neutral-400">{user.email}</span>
+            <span className="text-xs text-neutral-600 dark:text-neutral-400">{user.email}</span>
           )}
           {profile && msUntilNextQuota !== null && (
-            <span className="text-[11px] tabular-nums text-neutral-500" aria-live="polite">
+            <span className="text-[11px] tabular-nums text-neutral-600 dark:text-neutral-500" aria-live="polite">
               +1 in {formatMmSs(msUntilNextQuota)}
             </span>
           )}
@@ -73,7 +73,7 @@ const BadgeExpBar = ({ level, exp }: { level: number; exp: number }) => {
   const pct = Math.min(100, Math.max(0, (exp / needed) * 100));
   return (
     <div
-      className="h-1.5 w-full border-b-2 border-black bg-neutral-800"
+      className="h-1.5 w-full border-b-2 border-black bg-neutral-300 dark:bg-neutral-800"
       aria-label={`Lv ${level} exp: ${exp} / ${needed}`}
     >
       <div

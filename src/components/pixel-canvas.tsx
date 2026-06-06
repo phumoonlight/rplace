@@ -496,7 +496,7 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
   const cursor = selectedColor !== null && canPaint ? "crosshair" : "default";
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-neutral-950">
+    <div className="relative h-full w-full overflow-hidden bg-neutral-200 dark:bg-neutral-950">
       <div
         className="relative h-full w-full touch-none"
         ref={wrapperRef}
@@ -536,12 +536,12 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
         )}
       </div>
       {status === "loading" && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-neutral-400">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-neutral-600 dark:text-neutral-400">
           Loading canvas…
         </div>
       )}
       {status === "error" && (
-        <div className="pointer-events-none absolute bottom-2 left-2 right-2 border-2 border-black bg-red-950 px-3 py-2 text-xs text-red-200">
+        <div className="pointer-events-none absolute bottom-2 left-2 right-2 border-2 border-black bg-red-100 px-3 py-2 text-xs text-red-900 dark:bg-red-950 dark:text-red-200">
           Canvas unavailable ({errorMsg ?? "Firestore not configured"}). Showing empty canvas.
         </div>
       )}
@@ -550,8 +550,8 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
           className={[
             "pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 border-2 border-black px-3 py-1.5 text-xs shadow-[3px_3px_0_0_#000]",
             toast.kind === "error"
-              ? "bg-red-950 text-red-100"
-              : "bg-emerald-950 text-emerald-100",
+              ? "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-100"
+              : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
           ].join(" ")}
           role="status"
         >
