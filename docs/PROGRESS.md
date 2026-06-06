@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 0 — Scaffolding **complete**. Phase 1 — Firebase wiring is next.
-- **Last touched**: 2026-06-06 (scaffold green, dev server returns 200 on `/`)
-- **Next action**: Create the Firebase project in the console, fill in `.env.local`, then implement `src/lib/firebase/client.ts` and `src/lib/firebase/admin.ts`.
+- **Current phase**: Phase 1 — Firebase wiring. **Code complete, blocked on user.**
+- **Last touched**: 2026-06-06 (Firebase SDK init, AuthProvider, sign-in UI — typecheck + lint clean)
+- **Next action**: User must create the Firebase project in the console, enable Google sign-in + Firestore + RTDB, then populate `.env.local` from `.env.example`. Once that's done, sign-in is end-to-end testable. Then proceed to Phase 2 (`/api/me` + user profile doc).
 
 ---
 
@@ -29,9 +29,13 @@
 - [ ] Google sign-in provider enabled in console
 - [ ] Realtime Database created in console (region noted)
 - [ ] Firestore created in console
-- [ ] `src/lib/firebase/client.ts` initializes browser app
-- [ ] `src/lib/firebase/admin.ts` initializes Admin SDK from env
-- [ ] Sign-in button works end-to-end (popup → ID token retrievable)
+- [x] `src/lib/firebase/client.ts` initializes browser app (Auth + Firestore + RTDB lazy getters)
+- [x] `src/lib/firebase/admin.ts` initializes Admin SDK from env (named app, throws clear error if env missing)
+- [x] `src/lib/auth/verify-id-token.ts` server helper (Bearer extraction + token verify)
+- [x] `src/lib/auth/auth-context.tsx` client `<AuthProvider>` + `useAuth()` hook
+- [x] `<SignInButton />` and `<UserBadge />` components
+- [x] Root layout wraps children in `<AuthProvider>`; landing page shows sign-in or badge
+- [ ] Sign-in button works end-to-end (popup → ID token retrievable) — **needs real Firebase project**
 
 ### Phase 2 — User profile
 - [ ] `verifyIdToken` helper
@@ -87,6 +91,16 @@
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
 
+### 2026-06-06 — Phase 1 code complete (blocked on Firebase project)
+- Wrote [src/lib/firebase/client.ts](../src/lib/firebase/client.ts) (lazy getters for `Auth`, `Firestore`, `Database`) and [src/lib/firebase/admin.ts](../src/lib/firebase/admin.ts) (Admin SDK singleton under a named app, throws if env vars missing; handles `\n`-escaped private keys).
+- Wrote [src/lib/auth/verify-id-token.ts](../src/lib/auth/verify-id-token.ts) (`verifyIdToken`, `extractBearer`, `authedUserFromRequest`) and [src/lib/auth/auth-context.tsx](../src/lib/auth/auth-context.tsx) (`<AuthProvider>` + `useAuth()` exposing `signInWithGoogle`, `signOut`, `getIdToken`).
+- Wrote [src/components/sign-in-button.tsx](../src/components/sign-in-button.tsx) and [src/components/user-badge.tsx](../src/components/user-badge.tsx).
+- Wired into [src/app/layout.tsx](../src/app/layout.tsx) and [src/app/page.tsx](../src/app/page.tsx).
+- Added [src/types/globals.d.ts](../src/types/globals.d.ts) with `declare module "*.css"` to silence an IDE diagnostic on side-effect CSS imports (the runtime + `tsc --noEmit` were already fine; this just satisfies the editor's TS service).
+- `npx tsc --noEmit` → clean. `npm run lint` → no warnings or errors.
+- **Blocker**: end-to-end sign-in test requires a real Firebase project. User needs to create it and populate `.env.local`.
+- **Next**: Phase 2 — `GET /api/me` route handler that lazy-creates `users/{uid}` in Firestore and returns stats.
+
 ### 2026-06-06 — Phase 0 complete
 - Scaffolded Next.js 15.5.19 manually (didn't use `create-next-app` because the repo already had LICENSE/README/docs and the auto-mode classifier blocked moving them aside). Hand-wrote `package.json`, `tsconfig.json`, `next.config.ts`, `postcss.config.mjs`, `eslint.config.mjs`, `src/app/{layout,page}.tsx`, `src/app/globals.css`, `.env.example`.
 - Installed deps (514 packages, including `firebase` 11 and `firebase-admin` 13).
@@ -107,6 +121,8 @@
 
 - **2026-06-06** — Scaffolded Next.js by hand instead of `create-next-app`. Repo had pre-existing files; manual scaffolding produced an equivalent (TS, Tailwind v4, App Router, src dir, ESLint flat config) without disturbing them.
 - **2026-06-06** — Pinned Tailwind to v4 (uses `@import "tailwindcss"` in CSS, no JS `tailwind.config.ts` needed). PLAN.md's project layout still mentions `tailwind.config.ts`; left as-is since the file is optional in v4 and may be added later for theme tokens.
+- **2026-06-06** — File naming switched to **kebab-case** per CLAUDE.md style guide. PLAN.md's project layout still shows old camelCase names (`verifyIdToken.ts`, etc.); the actual paths follow kebab-case (`verify-id-token.ts`, `auth-context.tsx`, `sign-in-button.tsx`, `user-badge.tsx`). Treat kebab-case as authoritative.
+- **2026-06-06** — Admin SDK initializes under a **named app** (`"rplace-admin"`) instead of the default app. Reason: keeps the client and admin SDKs from accidentally aliasing each other in any environment that loads both (e.g. tests). Doesn't change behavior in normal request/response flows.
 
 ---
 
