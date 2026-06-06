@@ -1,39 +1,41 @@
 "use client";
 
-import { ORIENTATIONS, type Orientation } from "@/lib/canvas/constants";
+import type { Orientation } from "@/lib/canvas/constants";
 
 type OrientationToggleProps = {
   value: Orientation;
   onChange: (next: Orientation) => void;
 };
 
-const LABELS: Record<Orientation, string> = {
-  landscape: "Landscape",
-  portrait: "Portrait",
-};
-
 export const OrientationToggle = ({ value, onChange }: OrientationToggleProps) => {
+  const next: Orientation = value === "landscape" ? "portrait" : "landscape";
+  const isLandscape = value === "landscape";
+  const label = `Switch to ${next}`;
+
   return (
-    <div className="inline-flex border-2 border-black bg-white p-0.5 text-xs shadow-[3px_3px_0_0_#000] dark:bg-neutral-900">
-      {ORIENTATIONS.map((o) => {
-        const active = o === value;
-        return (
-          <button
-            key={o}
-            className={
-              "px-3 py-1 transition-colors " +
-              (active
-                ? "bg-neutral-300 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-50"
-                : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200")
-            }
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(o)}
-          >
-            {LABELS[o]}
-          </button>
-        );
-      })}
-    </div>
+    <button
+      className="flex h-10 w-10 items-center justify-center border-2 border-black bg-white text-neutral-900 shadow-[3px_3px_0_0_#000] hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+      type="button"
+      onClick={() => onChange(next)}
+      aria-label={label}
+      title={label}
+    >
+      <svg
+        aria-hidden="true"
+        fill="none"
+        height="18"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        viewBox="0 0 24 24"
+        width="18"
+      >
+        {isLandscape ? (
+          <rect x="3" y="7" width="18" height="10" rx="1" />
+        ) : (
+          <rect x="7" y="3" width="10" height="18" rx="1" />
+        )}
+      </svg>
+    </button>
   );
 };

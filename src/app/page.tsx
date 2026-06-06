@@ -102,8 +102,6 @@ const Home = () => {
             ?
           </button>
           <ThemeToggle />
-        </div>
-        <div className="pointer-events-auto">
           <OrientationToggle value={orientation} onChange={setOrientation} />
         </div>
       </div>
