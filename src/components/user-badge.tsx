@@ -1,15 +1,22 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/auth-context";
+import { formatMmSs } from "@/lib/user/use-quota-countdown";
 import type { UserProfile } from "@/lib/user/user-profile";
 
 type UserBadgeProps = {
   profile: UserProfile | null;
   loading?: boolean;
   error?: string | null;
+  msUntilNextQuota?: number | null;
 };
 
-export const UserBadge = ({ profile, loading = false, error = null }: UserBadgeProps) => {
+export const UserBadge = ({
+  profile,
+  loading = false,
+  error = null,
+  msUntilNextQuota = null,
+}: UserBadgeProps) => {
   const { user, signOut } = useAuth();
 
   if (!user) return null;
@@ -39,6 +46,11 @@ export const UserBadge = ({ profile, loading = false, error = null }: UserBadgeP
           <span className="text-xs text-red-400">Stats unavailable</span>
         ) : (
           <span className="text-xs text-neutral-400">{user.email}</span>
+        )}
+        {profile && msUntilNextQuota !== null && (
+          <span className="text-[11px] tabular-nums text-neutral-500" aria-live="polite">
+            +1 in {formatMmSs(msUntilNextQuota)}
+          </span>
         )}
       </div>
       <button

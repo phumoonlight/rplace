@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SignInButton } from "@/components/sign-in-button";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useMe } from "@/lib/user/use-me";
+import { formatMmSs, useQuotaCountdown } from "@/lib/user/use-quota-countdown";
 
 const formatDate = (ms: number) => {
   try {
@@ -22,7 +23,8 @@ const Stat = ({ label, value }: { label: string; value: string | number }) => (
 
 const MePage = () => {
   const { user, loading: authLoading } = useAuth();
-  const { profile, loading, error, reload } = useMe();
+  const { profile, loading, error, reload, setProfile } = useMe();
+  const msUntilNextQuota = useQuotaCountdown({ profile, setProfile });
 
   if (authLoading) {
     return (
@@ -101,8 +103,12 @@ const MePage = () => {
             />
           </div>
 
-          <p className="text-xs text-neutral-500">
-            Last quota tick anchor: {formatDate(profile.lastQuotaRestoreAt)}
+          <p className="text-xs text-neutral-500" aria-live="polite">
+            {msUntilNextQuota !== null
+              ? `Next quota in ${formatMmSs(msUntilNextQuota)}`
+              : "Quota full"}
+            {" · last tick anchor "}
+            {formatDate(profile.lastQuotaRestoreAt)}
           </p>
         </>
       )}

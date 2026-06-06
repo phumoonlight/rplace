@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 5 — Live updates. **Code complete. Still blocked on user (Firebase project setup) for end-to-end verification.**
-- **Last touched**: 2026-06-06 (Phase 5: replaced one-shot `getDocs` in `<PixelCanvas />` with a Firestore `onSnapshot` subscription on `canvas/{orientation}/chunks`, per-chunk `v`-based dedupe, blit-only-changed-chunks via per-chunk `putImageData`; typecheck, lint, prod build all clean. First Load JS on `/` 5.46 kB / 220 kB.)
-- **Next action**: Once `.env.local` lands, manual end-to-end test: open two browser windows, paint in one, confirm the pixel appears in the other within ~hundreds of ms. Then Phase 7 polish (Phase 6 leveling math is already done; only the live quota-tick countdown UI is left).
+- **Current phase**: Phase 6 — Leveling + quota restore. **Code complete (countdown UI shipped). Still blocked on user (Firebase project setup) for end-to-end verification.**
+- **Last touched**: 2026-06-06 (Phase 6 wrap-up: `useQuotaCountdown` hook mirrors `restoreQuota` client-side, ticks `setProfile` whenever a whole minute elapses, exposes `msUntilNextQuota`. `<UserBadge />` shows `+1 in 0:42` line; `/me` shows `Next quota in 0:42`. Typecheck, lint, prod build all clean. First Load JS on `/` 5.87 kB / 220 kB.)
+- **Next action**: Once `.env.local` lands, manual end-to-end: paint until quota = 0, watch countdown tick down to 0:00, confirm quota restores +1 without page reload. Then Phase 7 polish (mobile pinch zoom, at-zero-quota visual state, a11y pass, error toasts).
 
 ---
 
@@ -97,7 +97,7 @@
 
 - [x] `src/lib/leveling.ts` shared module (landed early as part of Phase 4 paint txn)
 - [x] Lazy quota restore inside paint txn (`restoreQuota` in the txn before the quota check)
-- [ ] Live countdown UI to next quota tick
+- [x] Live countdown UI to next quota tick
 - [x] Level-up toast (`leveledUp` flag from `/api/paint` triggers an in-canvas toast)
 
 ### Phase 7 — Polish
@@ -118,6 +118,17 @@
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-06 — Phase 6 complete (live quota countdown)
+
+- [src/lib/user/use-quota-countdown.ts](../src/lib/user/use-quota-countdown.ts) — new hook + `formatMmSs` helper. Owns a 1-second `setInterval` that updates an internal `now`, runs the shared `restoreQuota` from [src/lib/leveling.ts](../src/lib/leveling.ts) against the current profile, and `setProfile`s the result whenever `currentQuota` or `lastQuotaRestoreAt` change — so quota restores in the UI without an `/api/me` round-trip. Returns `msUntilNextQuota: number | null` (null at max). Returning null from the hook short-circuits the badge/footer "+1 in …" line entirely, which doubles as the at-max indicator.
+- [src/components/user-badge.tsx](../src/components/user-badge.tsx) — added `msUntilNextQuota` prop; renders a third 11px tabular-nums line "+1 in m:ss" below the stats line when non-null. `aria-live="polite"` so screen readers don't spam every second but still pick up the next-tick change.
+- [src/app/page.tsx](../src/app/page.tsx) — calls `useQuotaCountdown({ profile, setProfile })` (uses the existing `setProfile` from [use-me.ts](../src/lib/user/use-me.ts)) and threads `msUntilNextQuota` into `<UserBadge />`.
+- [src/app/me/page.tsx](../src/app/me/page.tsx) — same hook; replaces the static "Last quota tick anchor: …" footer with "Next quota in m:ss · last tick anchor …" (or "Quota full · …" when at max), live-updating once a second.
+- **Design notes**: The hook mirrors `restoreQuota` rather than duplicating its math, so the local optimistic tick is byte-for-byte the same advance the server will apply on the next paint — no drift between client display and server truth. After a paint, the server's response carries a fresh `lastQuotaRestoreAt` and the countdown resets to wherever the server placed the anchor. setInterval throttles in backgrounded tabs, but that's fine: `restoreQuota` advances by whole ticks regardless of how many intervals fired, so a tab brought back from background catches up in one cycle.
+- `npx tsc --noEmit` → clean. `npm run lint` → clean. `npm run build` → clean (`/` 5.87 kB / 220 kB; `/me` 2.51 kB / 217 kB — +0.4 kB across both routes for the hook + helper, shared chunk unchanged).
+- **Blocker**: same Phase 1 console + `.env.local`. To verify the local tick lines up with the server, need to actually paint and see `lastQuotaRestoreAt` come back from `/api/paint`.
+- **Next**: Phase 7 polish. Open boxes: mobile pinch zoom + drag, at-zero-quota visual state (dim palette / disable paint click / show "out of quota"), error toasts (already partially in canvas, missing on `/me`/auth), and a11y pass on palette + buttons.
 
 ### 2026-06-06 — Phase 5 complete (live updates)
 

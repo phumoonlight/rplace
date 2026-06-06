@@ -10,10 +10,12 @@ import { UserBadge } from "@/components/user-badge";
 import { useAuth } from "@/lib/auth/auth-context";
 import type { Orientation } from "@/lib/canvas/constants";
 import { useMe } from "@/lib/user/use-me";
+import { useQuotaCountdown } from "@/lib/user/use-quota-countdown";
 
 const Home = () => {
   const { user, loading: authLoading, getIdToken } = useAuth();
   const { profile, loading: profileLoading, error: profileError, setProfile } = useMe();
+  const msUntilNextQuota = useQuotaCountdown({ profile, setProfile });
   const [orientation, setOrientation] = useState<Orientation>("landscape");
   const [selectedColor, setSelectedColor] = useState<number | null>(null);
 
@@ -38,7 +40,12 @@ const Home = () => {
             <span className="text-sm text-neutral-500">Loading…</span>
           ) : user ? (
             <>
-              <UserBadge profile={profile} loading={profileLoading} error={profileError} />
+              <UserBadge
+                error={profileError}
+                loading={profileLoading}
+                msUntilNextQuota={msUntilNextQuota}
+                profile={profile}
+              />
               <Link
                 className="text-sm text-neutral-400 underline-offset-4 hover:text-neutral-200 hover:underline"
                 href="/me"
