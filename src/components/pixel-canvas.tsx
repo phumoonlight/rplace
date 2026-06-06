@@ -324,7 +324,12 @@ export const PixelCanvas = forwardRef<PixelCanvasHandle, PixelCanvasProps>(({
       });
       if (res.status === 429) {
         rollback();
-        showToast("error", "Out of quota — wait for the next tick.");
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (data.error === "rate_limited") {
+          showToast("error", "Too fast — slow down for a moment.");
+        } else {
+          showToast("error", "Out of quota — wait for the next tick.");
+        }
         return;
       }
       if (!res.ok) {

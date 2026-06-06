@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 7 — Polish. **Code complete. Phase 8 (rules + rate limit + deploy) is the only remaining phase.**
-- **Last touched**: 2026-06-07 (Phase 7 polish — pinch zoom + multi-finger pan in pixel-canvas, at-zero-quota Place-button state in bottom-hud, a11y labels on canvas surface + toast roles.)
-- **Next action**: Phase 8 — author `firestore.rules` (users + chunks per [PLAN.md](./PLAN.md) §6), add per-uid rate limit on `/api/paint` (in-memory token bucket fine for v1), deploy to Vercel and verify auth domain.
+- **Current phase**: Phase 8 — Hardening & deploy. **Code complete. Only manual deploy steps remain (Vercel deploy, prod auth domain, Lighthouse).**
+- **Last touched**: 2026-06-07 (Phase 8 code — `firestore.rules` written, per-uid in-memory token-bucket rate limit on `/api/paint`, client toast distinguishes rate-limited 429 from out-of-quota 429.)
+- **Next action**: Deploy `firestore.rules` to the Firebase project (if not already in sync with the console), push to Vercel, add the prod domain to Firebase authorized domains, run Lighthouse against the deployed URL.
 
 ---
 
@@ -110,14 +110,24 @@
 
 ### Phase 8 — Hardening & deploy
 
-- [ ] Firestore rules authored (`firestore.rules`) — covers users + canvas chunks
-- [ ] Per-uid rate limit on `/api/paint`
+- [x] Firestore rules authored (`firestore.rules`) — covers users + canvas chunks
+- [x] Per-uid rate limit on `/api/paint`
 
 ---
 
 ## Session log
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
+
+### 2026-06-07 — Phase 8 code complete (firestore.rules + paint rate limit)
+
+- [firebase/firestore.rules](../firebase/firestore.rules) — new (under `firebase/` so the Firebase config is grouped, diverging from PLAN §8 which sketched root-level). `users/{uid}` is owner-read (`request.auth.uid == uid`) / server-write only; `canvas/{orientation}/chunks/{chunkId}` is public-read / server-write only. Admin SDK bypasses these rules, so `/api/paint` and `/api/me` continue to function. Mirrors [PLAN.md §6](./PLAN.md). The manual checkbox "Firestore rules deployed" in this doc is already ticked, so the project console may already match; if it doesn't, `firebase deploy --only firestore:rules` will sync it (point `firestore.rules` in `firebase.json` at `firebase/firestore.rules`).
+- [src/lib/rate-limit/paint-rate-limit.ts](../src/lib/rate-limit/paint-rate-limit.ts) — in-memory per-uid token bucket. Capacity 20, refill 1 token/sec (so a 20-burst then steady 1/s sustained). `consumePaintToken(uid)` returns `{ ok: true }` or `{ ok: false, retryAfterMs }`. Bucket map is bounded at 10k entries; on insert past the limit, evict from the front (Map iteration is insertion-order, so this approximates oldest-first eviction). Every touch re-inserts the key so active uids drift to the back. `server-only` import guards against accidental client imports.
+- [src/app/api/paint/route.ts](../src/app/api/paint/route.ts) — calls `consumePaintToken(authed.uid)` *after* auth + body validation but *before* the Firestore transaction (no point opening a txn for a request we're about to reject). Rate-limited rejection returns 429 with `{ error: "rate_limited", retryAfterMs }` and a `Retry-After` header. The existing out-of-quota path still returns 429 with `{ error: "out_of_quota" }`, so both share the status code but are distinguishable by `error`.
+- [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) — the 429 branch in `submitPaint` now parses the error code and shows "Too fast — slow down for a moment." for `rate_limited` vs the existing "Out of quota — wait for the next tick." for `out_of_quota`. Rollback path is unchanged.
+- **Design notes**: chose in-memory over Upstash for v1 per PLAN §8 — keeps the deploy story to "set env vars, push to Vercel" with no extra infra. The known limitation is that a multi-region or multi-instance Vercel deploy means the bucket isn't shared, so the effective per-uid limit is `regions × capacity`. Acceptable as defense-in-depth on top of the quota check (which *is* shared via Firestore). Capacity 20 / refill 1/s lets a user dump a full max-100-pixel paint request and still have headroom, while throttling a script that fires `/api/paint` in a tight loop.
+- `npx tsc --noEmit` → clean. `npm run lint` → only the pre-existing `tile-inspect-bar.tsx` unused-`orientation` warning.
+- **Next**: manual deploy work — push to Vercel, add the prod domain to Firebase authorized domains, run Lighthouse against the deployed URL.
 
 ### 2026-06-07 — Phase 7 complete (pinch zoom, at-zero-quota, a11y)
 

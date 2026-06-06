@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /canvas/{orientation}/chunks/{chunkId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /reports/{reportId} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}

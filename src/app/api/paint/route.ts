@@ -12,6 +12,7 @@ import {
 import { chunkKey, pixelToChunk } from "@/lib/canvas/coords";
 import { EMPTY_CHUNK_HEX, localIndex } from "@/lib/canvas/chunks";
 import { applyBulkPaintProgress, restoreQuota } from "@/lib/leveling";
+import { consumePaintToken } from "@/lib/rate-limit/paint-rate-limit";
 import type { UserProfile } from "@/lib/user/user-profile";
 
 type RawPixel = { x?: unknown; y?: unknown; color?: unknown };
@@ -104,6 +105,15 @@ const POST = async (request: Request) => {
   }
 
   const { orientation, pixels } = parsed;
+
+  const rate = consumePaintToken(authed.uid);
+  if (!rate.ok) {
+    const retryAfterSec = Math.max(1, Math.ceil(rate.retryAfterMs / 1000));
+    return NextResponse.json(
+      { error: "rate_limited", retryAfterMs: rate.retryAfterMs },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+    );
+  }
 
   // Group pixels by chunk so we touch each chunk doc only once.
   const byChunk = new Map<string, Array<PixelInput & { lx: number; ly: number }>>();
