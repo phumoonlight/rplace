@@ -8,9 +8,9 @@
 
 ## Status snapshot
 
-- **Current phase**: Phase 3 — Static canvas. **Code complete, blocked on user.**
+- **Current phase**: Phase 3 — Static canvas. **Code complete on RTDB; needs migration to Firestore-only (plan change 2026-06-06).**
 - **Last touched**: 2026-06-06 (canvas constants/chunk/coords math, `<PixelCanvas />` with pan+zoom, orientation toggle wired into landing page — typecheck, lint, prod build all clean)
-- **Next action**: User still owes the Phase 1 Firebase console setup + `.env.local`. Once RTDB is reachable the canvas will render real chunks; today it gracefully falls back to an all-white canvas with an error banner if the RTDB read fails. Then proceed to Phase 4 (palette UI, `POST /api/paint`, Firestore quota txn, optimistic paint).
+- **Next action**: Plan changed — RTDB is dropped, Firestore is the only data store ([PLAN.md](./PLAN.md) §2, §3, §5, §6 updated). Phase 3 code currently reads chunks from RTDB; refactor [src/components/pixel-canvas.tsx](../src/components/pixel-canvas.tsx) to read chunk docs from Firestore (`getDocs` on `canvas/{orientation}/chunks`) and drop the `NEXT_PUBLIC_FIREBASE_DATABASE_URL` / `FIREBASE_DATABASE_URL` env vars + the RTDB getter in [src/lib/firebase/client.ts](../src/lib/firebase/client.ts). Then proceed to Phase 4 (palette UI, `POST /api/paint` with the two-doc Firestore txn, optimistic paint).
 
 ---
 
@@ -27,14 +27,12 @@
 ### Phase 1 — Firebase console setup
 - [ ] Firebase project created in console (record project ID in the values table below)
 - [ ] Google sign-in provider enabled in console
-- [ ] Realtime Database created in console (region noted)
-- [ ] Firestore created in console
+- [ ] Firestore created in console (region noted)
 - [ ] `.env.local` populated from `.env.example`
-- [ ] End-to-end sign-in verified (popup → ID token retrievable) — unblocked once the four console items + `.env.local` are done
+- [ ] End-to-end sign-in verified (popup → ID token retrievable) — unblocked once the three console items + `.env.local` are done
 
 ### Phase 8 — Deploy & rules
-- [ ] Firestore rules deployed via Firebase console / CLI
-- [ ] RTDB rules deployed via Firebase console / CLI
+- [ ] Firestore rules deployed via Firebase console / CLI (covers `users/{uid}` and `canvas/{orientation}/chunks/{chunkId}`)
 - [ ] Vercel deploy live
 - [ ] Production auth domain added to Firebase authorized domains
 - [ ] Lighthouse > 90 on mobile (run against the deployed URL)
@@ -68,22 +66,23 @@
 - [x] `src/lib/canvas/constants.ts` (dimensions, palette, chunk size)
 - [x] `src/lib/canvas/chunks.ts` (hex string ↔ Uint8Array)
 - [x] `src/lib/canvas/coords.ts`
-- [x] `<Canvas />` reads all chunks once and renders landscape
+- [x] `<Canvas />` reads all chunks once and renders landscape (currently RTDB — needs migration ↓)
 - [x] Pan + zoom (mouse + touch)
 - [x] Portrait orientation toggle works
+- [ ] **Migrate chunk read from RTDB to Firestore** (`getDocs` on `canvas/{orientation}/chunks`)
+- [ ] **Remove RTDB getter from `src/lib/firebase/client.ts`** and the `NEXT_PUBLIC_FIREBASE_DATABASE_URL` env var
+- [ ] **Remove server `FIREBASE_DATABASE_URL`** from `.env.example` and admin SDK init
 
 ### Phase 4 — Paint flow
 - [ ] `<Palette />` UI with 16 colors, keyboard shortcuts
 - [ ] `POST /api/paint` validates input
-- [ ] Firestore txn deducts quota, awards exp, level-ups
-- [ ] Server writes pixel to RTDB chunk
+- [ ] Single Firestore txn updates `users/{uid}` (quota/exp/level) AND `canvas/{orientation}/chunks/{key}` (new hex + `v` increment) atomically
 - [ ] Client optimistic paint + rollback on error
 - [ ] 429 (out of quota) handled with toast
 
 ### Phase 5 — Live updates
-- [ ] RTDB `recent` subscription on client
-- [ ] Other users' pixels appear without refresh
-- [ ] Server trims `recent` to last N
+- [ ] Firestore `onSnapshot` subscription on `canvas/{orientation}/chunks` collection
+- [ ] Other users' pixels appear without refresh (chunk-doc snapshot drives the offscreen blit)
 
 ### Phase 6 — Leveling + quota restore
 - [ ] `src/lib/leveling.ts` shared module + unit tests
@@ -99,8 +98,7 @@
 - [ ] Error toasts
 
 ### Phase 8 — Hardening & deploy
-- [ ] Firestore rules authored (`firestore.rules`)
-- [ ] RTDB rules authored (`database.rules.json`)
+- [ ] Firestore rules authored (`firestore.rules`) — covers users + canvas chunks
 - [ ] Per-uid rate limit on `/api/paint`
 
 ---
@@ -109,7 +107,14 @@
 
 > Newest entry first. Each entry: date, what shipped, what's next, blockers.
 
-### 2026-06-06 — Phase 3 code complete (still blocked on Firebase project)
+### 2026-06-06 — Plan change: dropped RTDB, Firestore-only
+- User decided to consolidate onto a single backend. Trade-off accepted: slightly higher per-paint cost (2 Firestore writes) and slightly slower live updates (`onSnapshot` ~hundreds of ms vs RTDB tens), in exchange for one set of rules, one set of env vars, and an atomic two-doc paint transaction (no cross-DB rollback problem).
+- [PLAN.md](./PLAN.md) rewritten: §2 tech-stack row + "Why Firestore-only" rationale; §3 chunks become Firestore docs `{ hex, v, updatedAt }`, `recent` event log removed (chunk-doc snapshots are the live channel), added "viewport optimization (post-v1)" note; §5 paint flow is now a single Firestore txn over `users/{uid}` + chunk doc with read-then-write ordering, added cost note; §6 Firestore rules now also cover `canvas/{orientation}/chunks/{chunkId}`, RTDB rules block deleted; §8 project layout drops `database.rules.json`; §9 drops both `NEXT_PUBLIC_FIREBASE_DATABASE_URL` and server `FIREBASE_DATABASE_URL`; §10 Phase 3/5/8 reworded.
+- Phase 3 checklist gained three follow-up boxes: migrate `<PixelCanvas />` from RTDB to Firestore `getDocs`, remove RTDB getter from [src/lib/firebase/client.ts](../src/lib/firebase/client.ts) + the public env var, drop the server `FIREBASE_DATABASE_URL`.
+- [CLAUDE.md](../CLAUDE.md) and [.env.example](../.env.example) also need to be brought into line — flagging here for the next code session rather than touching them with the doc edits.
+- **Next**: do the RTDB → Firestore migration (Phase 3 follow-up boxes), then Phase 4 paint flow using the new two-doc txn.
+
+
 - Canvas math modules — pure, shared client/server:
   - [src/lib/canvas/constants.ts](../src/lib/canvas/constants.ts): `Orientation` union, `ORIENTATIONS`, `CANVAS_DIMENSIONS` (landscape 800×400, portrait 400×800), `CHUNK_SIZE = 50`, and the 16-color `PALETTE` with precomputed RGB tuples (single source of truth for both `imageData` writes and the upcoming `<Palette />`).
   - [src/lib/canvas/chunks.ts](../src/lib/canvas/chunks.ts): `decodeChunkHex`, `encodeChunkHex`, `getPixelInChunk`, `setPixelInChunk`, `EMPTY_CHUNK_HEX = "0".repeat(2500)`.
@@ -164,6 +169,7 @@
 - **2026-06-06** — Pinned Tailwind to v4 (uses `@import "tailwindcss"` in CSS, no JS `tailwind.config.ts` needed). PLAN.md's project layout still mentions `tailwind.config.ts`; left as-is since the file is optional in v4 and may be added later for theme tokens.
 - **2026-06-06** — File naming switched to **kebab-case** per CLAUDE.md style guide. PLAN.md's project layout still shows old camelCase names (`verifyIdToken.ts`, etc.); the actual paths follow kebab-case (`verify-id-token.ts`, `auth-context.tsx`, `sign-in-button.tsx`, `user-badge.tsx`). Treat kebab-case as authoritative.
 - **2026-06-06** — Admin SDK initializes under a **named app** (`"rplace-admin"`) instead of the default app. Reason: keeps the client and admin SDKs from accidentally aliasing each other in any environment that loads both (e.g. tests). Doesn't change behavior in normal request/response flows.
+- **2026-06-06** — **Dropped RTDB; Firestore is the only data store.** Trades a bit of latency (~hundreds of ms vs tens) and Firestore write cost (2 writes per paint) for a single-backend stack and atomic two-doc paint transactions (`users/{uid}` + chunk doc in one txn — no cross-DB rollback problem). PLAN.md §2/§3/§5/§6/§8/§9/§10 rewritten. Phase 3 code still reads RTDB and needs migration before Phase 4 starts.
 
 ---
 

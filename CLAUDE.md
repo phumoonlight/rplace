@@ -26,21 +26,24 @@ A Reddit r/place style collaborative pixel canvas. Two canvases — **landscape*
 ### Stack
 - **Next.js 15 App Router** + React 19 + TypeScript strict. Fullstack (FE and BE) in this single repo.
 - **Tailwind v4** with CSS-only config (`@import "tailwindcss"` in [src/app/globals.css](src/app/globals.css)). No `tailwind.config.ts` — add one only if theme tokens are needed.
-- **Firebase**: Auth (Google), Firestore (user profile), Realtime Database (canvas pixels).
+- **Firebase**: Auth (Google), Firestore (everything — user profile **and** canvas pixels).
 
-### The dual-database split (important — non-obvious)
-- **Firestore** holds `users/{uid}` (quota, exp, level, lifetime stats). Used for atomic transactions and queries. Touched once per paint.
-- **RTDB** holds the canvas: `/canvas/{landscape|portrait}/chunks/{cy}_{cx}` are 50×50 chunks stored as 2500-char hex strings (4 bits per pixel, 16-color palette). `/canvas/.../recent` is a transient push-keyed list of recent pixel events for live fanout. Used for high-frequency tiny updates and broadcast.
-
-This split is deliberate: Firestore's per-op pricing would be punitive for a pixel firehose, and RTDB's diff-based listeners are built for exactly this. Do **not** consolidate the canvas into Firestore "for simplicity."
+### Single-database model (was dual-DB; changed 2026-06-06)
+- **Firestore** is the only data store. RTDB was dropped to simplify the stack and to make paint atomic across user + canvas state.
+- `users/{uid}` holds quota, exp, level, lifetime stats.
+- `canvas/{orientation}/chunks/{cy}_{cx}` docs hold the canvas — each doc is `{ hex: string (2500 chars, 4-bit palette), v: number, updatedAt: Timestamp }`. 16 × 8 = 128 chunks per orientation.
+- Live updates: clients use `onSnapshot` on the chunks collection — each remote paint mutates one chunk doc which fires the listener. There is **no** separate `recent` event log.
+- Trade-offs accepted: ~2 Firestore writes per paint (vs cheap RTDB writes) and `onSnapshot` latency in the hundreds of ms (vs RTDB tens). See PLAN.md §2 "Why Firestore-only" and §5 cost note. If the firehose ever outgrows this, isolate behind the chunk read/write helpers and revisit.
 
 ### Paint flow (the critical path)
-`POST /api/paint` → verify ID token → Firestore transaction on `users/{uid}`:
-1. Lazy-restore quota from `lastQuotaRestoreAt` (1/min, capped at `maxQuota`).
-2. If `currentQuota <= 0` return 429.
-3. Decrement quota, increment `pixelsPainted` and `exp`, recompute `level`/`maxQuota`, top up `currentQuota` on level-up.
+`POST /api/paint` → verify ID token → **single Firestore transaction** over `users/{uid}` **and** `canvas/{orientation}/chunks/{key}`:
+1. `tx.get` both docs (Firestore txns require all reads before writes).
+2. Lazy-restore quota from `lastQuotaRestoreAt` (1/min, capped at `maxQuota`).
+3. If `currentQuota <= 0` return 429.
+4. `tx.update(userRef, …)` — decrement quota, increment `pixelsPainted` and `exp`, recompute `level`/`maxQuota`, top up `currentQuota` on level-up.
+5. `tx.update(chunkRef, { hex: newHex, v: FieldValue.increment(1), updatedAt: serverTimestamp() })`.
 
-After the txn commits, write the pixel to its RTDB chunk and push a `recent` event via the Admin SDK. Cross-DB rollback is **not** attempted — if the RTDB write fails the user keeps the credit; log it and move on. This is documented in PLAN.md §5.
+Both writes commit atomically — no cross-DB rollback problem. Documented in PLAN.md §5.
 
 ### Code layout (target — being built out phase by phase)
 - [src/app/](src/app/) — App Router pages and route handlers (`api/me`, `api/paint`).
@@ -52,16 +55,17 @@ After the txn commits, write the pixel to its RTDB chunk and push a `recent` eve
 
 ### Auth & security model
 - Client signs in with Firebase Google provider; ID token is sent on every API call.
-- All `users/{uid}` writes go through server routes using Admin SDK so quota/exp cannot be forged. Firestore rules: `allow write: if false`.
-- RTDB canvas is publicly readable, server-only writable. Rules deployed in Phase 8.
+- All `users/{uid}` and `canvas/{orientation}/chunks/{key}` writes go through server routes using Admin SDK so quota/exp can't be forged and the canvas can't be defaced bypassing the paint route. Firestore rules: `users/{uid}` is owner-read, server-write; chunks are public-read, server-write.
 
 ## Environment
 
 `.env.local` is required for any Firebase-touching code. See [.env.example](.env.example). Two distinct sets:
 - `NEXT_PUBLIC_FIREBASE_*` — safe to expose, used by client SDK.
-- `FIREBASE_ADMIN_*` and server `FIREBASE_DATABASE_URL` — server only. `FIREBASE_ADMIN_PRIVATE_KEY` must wrap newlines as the literal string `\n` and be quoted.
+- `FIREBASE_ADMIN_*` — server only. `FIREBASE_ADMIN_PRIVATE_KEY` must wrap newlines as the literal string `\n` and be quoted.
 
-For local development, prefer the **Firebase Emulator Suite** over hitting the real project — it doesn't count against free-tier quotas and won't burn the 100-concurrent-connection RTDB cap during HMR reloads.
+No `FIREBASE_DATABASE_URL` is needed — RTDB was dropped and Firestore uses the project ID directly.
+
+For local development, prefer the **Firebase Emulator Suite** over hitting the real project — it doesn't count against free-tier quotas.
 
 ## Conventions
 
